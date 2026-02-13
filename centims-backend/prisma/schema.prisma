@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USUARIS
+// ============================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  password     String
+  role         UserRole @default(USER)
+  
+  // ══════════════════════════════════════════
+  // COMPTE PERSONAL (tots els usuaris)
+  // ══════════════════════════════════════════
+  balanceEUR   Float    @default(0) @map("balance_eur")
+  
+  // ══════════════════════════════════════════
+  // COMPTE EMPRESA (només admin)
+  // ══════════════════════════════════════════
+  adminBalanceEUR        Float @default(0) @map("admin_balance_eur")
+  adminSpreadEarned      Float @default(0) @map("admin_spread_earned")
+  adminCapitalInjected   Float @default(0) @map("admin_capital_injected")
+  
+  // Stripe
+  stripeCustomerId String? @unique @map("stripe_customer_id")
+  
+  // Status
+  isActive     Boolean  @default(true) @map("is_active")
+  isBanned     Boolean  @default(false) @map("is_banned")
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  // Relacions
+  portfolios   Portfolio[]
+  transactions Transaction[]
+  payments     Payment[]
+  tokenProposals      TokenProposal[] @relation("UserProposals")
+  reviewedProposals   TokenProposal[] @relation("ReviewedProposals")
+  
+  @@map("users")
+}
+
+// ============================================
+// PRODUCTES
+// ============================================
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  emoji       String
+  ticker      String   @unique
+  description String?
+  
+  // Bonding curve parameters
+  p0          Float    // Preu base
+  k           Float    // Constant
+  supply      Float    @default(0) // Supply actual
+  
+  isActive    Boolean  @default(true) @map("is_active")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   Int?     @map("created_by") // Admin user ID
+  
+  // Relacions
+  portfolios   Portfolio[]
+  transactions Transaction[]
+  priceHistory PriceHistory[]
+  adminBuffer  AdminBuffer?
+  
+  @@map("products")
+}
+
+// ============================================
+// CARTERES
+// ============================================
+
+model Portfolio {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  productId   Int      @map("product_id")
+  
+  fractions   Float    @default(0)
+  investedEUR Float    @default(0) @map("invested_eur")
+  avgPrice    Float    @default(0) @map("avg_price")
+  
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relacions
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, productId])
+  @@map("portfolios")
+}
+
+// ============================================
+// TRANSACCIONS
+// ============================================
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Transaction {
+  id             Int               @id @default(autoincrement())
+  userId         Int               @map("user_id")
+  productId      Int               @map("product_id")
+  
+  type           TransactionType
+  status         TransactionStatus @default(PENDING)
+  
+  // Quantitats
+  amountEUR      Float?            @map("amount_eur") // Si BUY
+  fractions      Float
+  eurRecovered   Float?            @map("eur_recovered") // Si SELL
+  
+  // Estat del mercat
+  priceAtTime    Float             @map("price_at_time")
+  supplyBefore   Float             @map("supply_before")
+  supplyAfter    Float             @map("supply_after")
+  
+  // Admin
+  adminFractions Float?            @map("admin_fractions") // Si BUY
+  
+  createdAt      DateTime          @default(now()) @map("created_at")
+  completedAt    DateTime?         @map("completed_at")
+  
+  // Relacions
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([productId])
+  @@map("transactions")
+}
+
+// ============================================
+// BUFFER ADMIN
+// ============================================
+
+model AdminBuffer {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @unique @map("product_id")
+  
+  fractions       Float    @default(0)
+  consolidatedEUR Float    @default(0) @map("consolidated_eur") // EUR de consolidacions (burn fraccions)
+  
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relacions
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@map("admin_buffer")
+}
+
+// ============================================
+// HISTORIAL DE PREUS
+// ============================================
+
+model PriceHistory {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  
+  price     Float
+  supply    Float
+  
+  timestamp DateTime @default(now())
+  
+  // Relacions
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@index([productId, timestamp])
+  @@map("price_history")
+}
+
+// ============================================
+// PAGAMENTS (Stripe)
+// ============================================
+
+enum PaymentType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Payment {
+  id                    Int           @id @default(autoincrement())
+  userId                Int           @map("user_id")
+  
+  type                  PaymentType
+  status                PaymentStatus @default(PENDING)
+  
+  amountEUR             Float         @map("amount_eur")
+  
+  // Stripe
+  stripePaymentIntentId String?       @unique @map("stripe_payment_intent_id")
+  
+  errorMessage          String?       @map("error_message")
+  
+  createdAt             DateTime      @default(now()) @map("created_at")
+  completedAt           DateTime?     @map("completed_at")
+  
+  // Relacions
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("payments")
+}
+
+// ============================================
+// PROPOSTES DE TOKENS
+// ============================================
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model TokenProposal {
+  id              Int            @id @default(autoincrement())
+  userId          Int            @map("user_id")
+  
+  name            String
+  emoji           String
+  ticker          String
+  description     String
+  
+  status          ProposalStatus @default(PENDING)
+  rejectionReason String?        @map("rejection_reason")
+  
+  createdAt       DateTime       @default(now()) @map("created_at")
+  reviewedAt      DateTime?      @map("reviewed_at")
+  reviewedBy      Int?           @map("reviewed_by")
+  
+  // Relacions
+  user            User           @relation("UserProposals", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer        User?          @relation("ReviewedProposals", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([status])
+  @@map("token_proposals")
+}
