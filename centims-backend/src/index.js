@@ -20,31 +20,33 @@ const PORT = process.env.PORT || 3001;
 // MIDDLEWARE GLOBAL
 // ============================================
 
-// Origins permesos (local + producció)
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://centims.cat',
+  'https://centims.vercel.app',
 ];
 
-// Afegir URL de Vercel si existeix (producció)
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
-}
-
-// Afegir preview deploys de Vercel (automàtic)
-if (process.env.VERCEL_URL) {
-  allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
-}
-
+// Afegir totes les preview URLs de Vercel
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Permetre requests sense origin (Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Permetre origins de la llista
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Permetre qualsevol URL de Vercel (*.vercel.app)
+    if (origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 // ============================================
 // RUTES
 // ============================================
