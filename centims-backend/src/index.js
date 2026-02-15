@@ -25,6 +25,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://centims.cat',
+  'https://www.centims.cat',
   'https://centims.vercel.app',
 ];
 
