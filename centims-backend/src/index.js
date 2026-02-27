@@ -11,6 +11,12 @@ const transactionRoutes = require('./routes/transactions');
 const portfolioRoutes = require('./routes/portfolio');
 const adminRoutes = require('./routes/admin');
 const proposalsRoutes = require('./routes/proposals');
+const { startCronJobs } = require('./services/cronJobs');
+const usersRoutes = require('./routes/users');
+const rankingsRoutes = require('./routes/rankings');
+const prizesRoutes = require('./routes/prizes');
+const achievementsRoutes = require('./routes/achievements');
+const emailsRoutes = require('./routes/emails');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -61,6 +67,11 @@ app.use('/transactions', transactionRoutes);
 app.use('/portfolio', portfolioRoutes);
 app.use('/admin', adminRoutes);
 app.use('/proposals', proposalsRoutes);
+app.use('/users', usersRoutes);
+app.use('/rankings', rankingsRoutes);
+app.use('/prizes', prizesRoutes);
+app.use('/achievements', achievementsRoutes);
+app.use('/emails', emailsRoutes);
 
 // ============================================
 // HEALTH CHECK
@@ -139,12 +150,14 @@ app.listen(PORT, async () => {
   console.log('🪙 ================================');
   console.log('');
 
+
   // Verificar connexió DB
   try {
     await prisma.$connect();
     console.log('✅ Base de dades connectada correctament!');
 
     // Iniciar cron job
+    startCronJobs();
     startCronJob();
 
   } catch (error) {

@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,236 +10,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// USUARIS
-// ============================================
-
 enum UserRole {
   USER
   ADMIN
 }
 
-model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
-  name         String
-  password     String
-  role         UserRole @default(USER)
-  
-  // ══════════════════════════════════════════
-  // COMPTE PERSONAL (tots els usuaris)
-  // ══════════════════════════════════════════
-  balanceEUR   Float    @default(0) @map("balance_eur")
-  
-  // ══════════════════════════════════════════
-  // COMPTE EMPRESA (només admin)
-  // ══════════════════════════════════════════
-  adminBalanceEUR        Float @default(0) @map("admin_balance_eur")
-  adminSpreadEarned      Float @default(0) @map("admin_spread_earned")
-  adminCapitalInjected   Float @default(0) @map("admin_capital_injected")
-  
-  // Stripe
-  stripeCustomerId String? @unique @map("stripe_customer_id")
-  
-  // Status
-  isActive     Boolean  @default(true) @map("is_active")
-  isBanned     Boolean  @default(false) @map("is_banned")
-  
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-  
-  // Relacions
-  portfolios   Portfolio[]
-  transactions Transaction[]
-  payments     Payment[]
-  tokenProposals      TokenProposal[] @relation("UserProposals")
-  reviewedProposals   TokenProposal[] @relation("ReviewedProposals")
-  
-  @@map("users")
-}
-
-// ============================================
-// PRODUCTES
-// ============================================
-
-model Product {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  emoji       String
-  ticker      String   @unique
-  description String?
-  
-  // Bonding curve parameters
-  p0          Float    // Preu base
-  k           Float    // Constant
-  supply      Float    @default(0) // Supply actual
-  
-  isActive    Boolean  @default(true) @map("is_active")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  createdBy   Int?     @map("created_by") // Admin user ID
-  
-  // Relacions
-  portfolios   Portfolio[]
-  transactions Transaction[]
-  priceHistory PriceHistory[]
-  adminBuffer  AdminBuffer?
-  
-  @@map("products")
-}
-
-// ============================================
-// CARTERES
-// ============================================
-
-model Portfolio {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @map("user_id")
-  productId   Int      @map("product_id")
-  
-  fractions   Float    @default(0)
-  investedEUR Float    @default(0) @map("invested_eur")
-  avgPrice    Float    @default(0) @map("avg_price")
-  
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
-  // Relacions
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, productId])
-  @@map("portfolios")
-}
-
-// ============================================
-// TRANSACCIONS
-// ============================================
-
 enum TransactionType {
   BUY
   SELL
 }
-
-enum TransactionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-}
-
-model Transaction {
-  id             Int               @id @default(autoincrement())
-  userId         Int               @map("user_id")
-  productId      Int               @map("product_id")
-  
-  type           TransactionType
-  status         TransactionStatus @default(PENDING)
-  
-  // Quantitats
-  amountEUR      Float?            @map("amount_eur") // Si BUY
-  fractions      Float
-  eurRecovered   Float?            @map("eur_recovered") // Si SELL
-  
-  // Estat del mercat
-  priceAtTime    Float             @map("price_at_time")
-  supplyBefore   Float             @map("supply_before")
-  supplyAfter    Float             @map("supply_after")
-  
-  // Admin
-  adminFractions Float?            @map("admin_fractions") // Si BUY
-  
-  createdAt      DateTime          @default(now()) @map("created_at")
-  completedAt    DateTime?         @map("completed_at")
-  
-  // Relacions
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([productId])
-  @@map("transactions")
-}
-
-// ============================================
-// BUFFER ADMIN
-// ============================================
-
-model AdminBuffer {
-  id              Int      @id @default(autoincrement())
-  productId       Int      @unique @map("product_id")
-  
-  fractions       Float    @default(0)
-  consolidatedEUR Float    @default(0) @map("consolidated_eur") // EUR de consolidacions (burn fraccions)
-  
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  
-  // Relacions
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  @@map("admin_buffer")
-}
-
-// ============================================
-// HISTORIAL DE PREUS
-// ============================================
-
-model PriceHistory {
-  id        Int      @id @default(autoincrement())
-  productId Int      @map("product_id")
-  
-  price     Float
-  supply    Float
-  
-  timestamp DateTime @default(now())
-  
-  // Relacions
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  @@index([productId, timestamp])
-  @@map("price_history")
-}
-
-// ============================================
-// PAGAMENTS (Stripe)
-// ============================================
-
-enum PaymentType {
-  DEPOSIT
-  WITHDRAWAL
-}
-
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-}
-
-model Payment {
-  id                    Int           @id @default(autoincrement())
-  userId                Int           @map("user_id")
-  
-  type                  PaymentType
-  status                PaymentStatus @default(PENDING)
-  
-  amountEUR             Float         @map("amount_eur")
-  
-  // Stripe
-  stripePaymentIntentId String?       @unique @map("stripe_payment_intent_id")
-  
-  errorMessage          String?       @map("error_message")
-  
-  createdAt             DateTime      @default(now()) @map("created_at")
-  completedAt           DateTime?     @map("completed_at")
-  
-  // Relacions
-  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@map("payments")
-}
-
-// ============================================
-// PROPOSTES DE TOKENS
-// ============================================
 
 enum ProposalStatus {
   PENDING
@@ -244,27 +26,292 @@ enum ProposalStatus {
   REJECTED
 }
 
-model TokenProposal {
-  id              Int            @id @default(autoincrement())
-  userId          Int            @map("user_id")
+// ============================================
+// USERS (ACTUALITZAT AMB COMPETITION)
+// ============================================
+model User {
+  id                   Int       @id @default(autoincrement())
+  email                String    @unique
+  name                 String    // Nom real (privat)
+  username             String?   @unique // Nom públic (canviable cada 3 mesos)
+  usernameUpdatedAt    DateTime? @map("username_updated_at")
+  usernameChangeCount  Int       @default(0) @map("username_change_count")
+  password             String
+  role                 UserRole  @default(USER)
   
-  name            String
-  emoji           String
-  ticker          String
-  description     String
+  // Saldos
+  balanceEUR           Float     @default(0) @map("balance_eur")
+  adminBalanceEUR      Float     @default(0) @map("admin_balance_eur")
+  adminSpreadEarned    Float     @default(0) @map("admin_spread_earned")
+  adminCapitalInjected Float     @default(0) @map("admin_capital_injected")
   
-  status          ProposalStatus @default(PENDING)
-  rejectionReason String?        @map("rejection_reason")
+  // Estadístiques competició
+  totalTransactions    Int       @default(0) @map("total_transactions")
+  totalAchievements    Int       @default(0) @map("total_achievements")
+  bestPosition         Int?      @map("best_position")
+  bestPositionMonth    String?   @map("best_position_month") // "2025-02"
   
-  createdAt       DateTime       @default(now()) @map("created_at")
-  reviewedAt      DateTime?      @map("reviewed_at")
-  reviewedBy      Int?           @map("reviewed_by")
+  // Stripe
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  
+  // Status
+  isActive             Boolean   @default(true) @map("is_active")
+  isBanned             Boolean   @default(false) @map("is_banned")
+  
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
   
   // Relacions
-  user            User           @relation("UserProposals", fields: [userId], references: [id], onDelete: Cascade)
-  reviewer        User?          @relation("ReviewedProposals", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  portfolios           Portfolio[]
+  transactions         Transaction[]
+  payments             Payment[]
+  tokenProposals       TokenProposal[] @relation("ProposedBy")
+  reviewedProposals    TokenProposal[] @relation("ReviewedBy")
+  rankings             MonthlyRanking[]
+  achievements         MonthlyAchievement[]
   
-  @@index([userId])
-  @@index([status])
+  @@map("users")
+}
+
+// ============================================
+// PRODUCTS (ACTUALITZAT AMB BOOSTS)
+// ============================================
+model Product {
+  id                   Int       @id @default(autoincrement())
+  name                 String
+  emoji                String
+  ticker               String    @unique
+  description          String?
+  
+  // Bonding curve
+  p0                   Float     // Preu inicial
+  k                    Float     // Pendent corba
+  supply               Float     @default(0)
+  
+  // Sistema competició
+  isPermanent          Boolean   @default(false) @map("is_permanent")
+  season               String?   // "2025-02"
+  
+  // Boost estacional
+  seasonalMultiplier   Float     @default(1.0) @map("seasonal_multiplier")
+  seasonalNotes        String?   @map("seasonal_notes") // Notes internes admin
+  
+  // Boost temporal/events
+  boostActive          Boolean   @default(false) @map("boost_active")
+  boostValue           Float     @default(1.0) @map("boost_value")
+  boostExpiresAt       DateTime? @map("boost_expires_at")
+  boostDescription     String?   @map("boost_description") // "Barça guanya Champions"
+  
+  isActive             Boolean   @default(true) @map("is_active")
+  createdBy            Int       @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  
+  // Relacions
+  portfolios           Portfolio[]
+  transactions         Transaction[]
+  priceHistory         PriceHistory[]
+  adminBuffer          AdminBuffer?
+  
+  @@map("products")
+}
+
+// ============================================
+// PORTFOLIOS
+// ============================================
+model Portfolio {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @map("user_id")
+  productId            Int       @map("product_id")
+  fractions            Float
+  investedEUR          Float     @default(0) @map("invested_eur")
+  avgPrice             Float     @default(0) @map("avg_price")
+  firstBuyDate         DateTime  @default(now()) @map("first_buy_date") // Per HODLer achievement
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user                 User      @relation(fields: [userId], references: [id])
+  product              Product   @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+  @@map("portfolios")
+}
+
+// ============================================
+// TRANSACTIONS
+// ============================================
+model Transaction {
+  id                   Int             @id @default(autoincrement())
+  userId               Int             @map("user_id")
+  productId            Int             @map("product_id")
+  type                 TransactionType @map("type")
+  status               String          @default("COMPLETED")
+  amountEUR            Float?          @map("amount_eur")
+  fractions            Float
+  adminFractions       Float           @default(0) @map("admin_fractions")
+  eurRecovered         Float?          @map("eur_recovered")
+  priceAtTime          Float           @map("price_at_time")
+  supplyBefore         Float           @map("supply_before")
+  supplyAfter          Float           @map("supply_after")
+  completedAt          DateTime?       @map("completed_at")
+  createdAt            DateTime        @default(now()) @map("created_at")
+
+  user                 User            @relation(fields: [userId], references: [id])
+  product              Product         @relation(fields: [productId], references: [id])
+
+  @@map("transactions")
+}
+
+// ============================================
+// PRICE HISTORY
+// ============================================
+model PriceHistory {
+  id                   Int       @id @default(autoincrement())
+  productId            Int       @map("product_id")
+  price                Float
+  supply               Float
+  createdAt            DateTime  @default(now()) @map("created_at")
+  
+  product              Product   @relation(fields: [productId], references: [id])
+  
+  @@map("price_history")
+}
+
+// ============================================
+// ADMIN BUFFER
+// ============================================
+model AdminBuffer {
+  id                   Int       @id @default(autoincrement())
+  productId            Int       @unique @map("product_id")
+  fractions            Float     @default(0)
+  consolidatedEUR      Float     @default(0) @map("consolidated_eur")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  
+  product              Product   @relation(fields: [productId], references: [id])
+  
+  @@map("admin_buffer")
+}
+
+// ============================================
+// TOKEN PROPOSALS
+// ============================================
+model TokenProposal {
+  id                   Int            @id @default(autoincrement())
+  proposedBy           Int            @map("proposed_by")
+  name                 String
+  emoji                String
+  ticker               String
+  description          String
+  suggestedP0          Float?         @map("suggested_p0")
+  suggestedK           Float?         @map("suggested_k")
+  status               ProposalStatus @default(PENDING)
+  reviewedBy           Int?           @map("reviewed_by")
+  reviewNotes          String?        @map("review_notes")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  reviewedAt           DateTime?      @map("reviewed_at")
+  
+  proposer             User           @relation("ProposedBy", fields: [proposedBy], references: [id])
+  reviewer             User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  
   @@map("token_proposals")
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+model Payment {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @map("user_id")
+  amount               Float
+  currency             String    @default("EUR")
+  stripePaymentId      String    @map("stripe_payment_id")
+  status               String
+  createdAt            DateTime  @default(now()) @map("created_at")
+  
+  user                 User      @relation(fields: [userId], references: [id])
+  
+  @@map("payments")
+}
+
+// ============================================
+// MONTHLY RANKINGS (NOU)
+// ============================================
+model MonthlyRanking {
+  id                   Int       @id @default(autoincrement())
+  month                String    // "2025-02"
+  position             Int
+  userId               Int       @map("user_id")
+  username             String
+  tokensSnapshot       Json      @map("tokens_snapshot") // ["🧅 Calçot 4K", "⚽ Yamin"]
+  balanceEUR           Float     @map("balance_eur")
+  investedValue        Float     @map("invested_value")
+  spotValue            Float     @map("spot_value")
+  totalValue           Float     @map("total_value")
+  gainPercent          Float     @map("gain_percent")
+  achievedAt           DateTime  @map("achieved_at") // Per desempat
+  createdAt            DateTime  @default(now()) @map("created_at")
+  
+  user                 User      @relation(fields: [userId], references: [id])
+  
+  @@unique([month, position])
+  @@index([month])
+  @@index([userId])
+  @@map("monthly_rankings")
+}
+
+// ============================================
+// MONTHLY PRIZES (NOU)
+// ============================================
+model MonthlyPrize {
+  id                   Int       @id @default(autoincrement())
+  month                String    // "2025-02"
+  position             Int       // 1-10
+  prizeName            String?   @map("prize_name")
+  sponsorName          String?   @map("sponsor_name")
+  sponsorLink          String?   @map("sponsor_link")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  
+  @@unique([month, position])
+  @@index([month])
+  @@map("monthly_prizes")
+}
+
+// ============================================
+// MONTHLY ACHIEVEMENTS (NOU)
+// ============================================
+model MonthlyAchievement {
+  id                   Int       @id @default(autoincrement())
+  month                String    // "2025-02"
+  achievementType      String    @map("achievement_type") // "early_bird", "sniper", "hodler", "trader"
+  userId               Int       @map("user_id")
+  username             String
+  metricValue          Float     @map("metric_value")
+  description          String
+  createdAt            DateTime  @default(now()) @map("created_at")
+  
+  user                 User      @relation(fields: [userId], references: [id])
+  
+  @@unique([month, achievementType])
+  @@index([month])
+  @@index([userId])
+  @@map("monthly_achievements")
+}
+
+// ============================================
+// EMAILS SENT (NOU)
+// ============================================
+model EmailSent {
+  id                   Int       @id @default(autoincrement())
+  emailType            String    @map("email_type") // "winners", "weekly_ranking", "welcome", "custom"
+  sentTo               String[]  @map("sent_to") // Array emails
+  subject              String
+  body                 String
+  month                String?   // NULL per emails no mensuals
+  recipientsCount      Int       @map("recipients_count")
+  sentAt               DateTime  @default(now()) @map("sent_at")
+  sentBy               Int?      @map("sent_by") // NULL si automàtic
+  
+  @@index([emailType])
+  @@index([month])
+  @@map("emails_sent")
 }

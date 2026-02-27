@@ -36,7 +36,7 @@ router.post('/', authMiddleware, async (req, res) => {
     // Verificar límit de propostes pendents
     const pendingCount = await prisma.tokenProposal.count({
       where: {
-        userId,
+        proposedBy: userId,
         status: 'PENDING'
       }
     });
@@ -50,7 +50,7 @@ router.post('/', authMiddleware, async (req, res) => {
     // Verificar límit de tokens creats (acceptats)
     const acceptedCount = await prisma.tokenProposal.count({
       where: {
-        userId,
+        proposedBy: userId,
         status: 'ACCEPTED'
       }
     });
@@ -100,7 +100,7 @@ router.post('/', authMiddleware, async (req, res) => {
     // Crear proposta
     const proposal = await prisma.tokenProposal.create({
       data: {
-        userId,
+        proposedBy: userId,
         name,
         emoji,
         ticker: ticker.toUpperCase(),
@@ -131,7 +131,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const userId = req.user.id;
 
     const proposals = await prisma.tokenProposal.findMany({
-      where: { userId },
+      where: { proposedBy: userId },
       orderBy: { createdAt: 'desc' }
     });
 

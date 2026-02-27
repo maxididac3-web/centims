@@ -8,13 +8,18 @@ export default function RegisterPage() {
   const router = useRouter();
   const { register } = useAuth();
 
-  const [form, setForm] = useState({ email: '', name: '', password: '', confirmPassword: '' });
+  const [form, setForm] = useState({ email: '', name: '', username: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (form.username && !/^[a-zA-Z0-9_]{3,20}$/.test(form.username)) {
+      setError('El nom d\'usuari només pot contenir lletres, números i guions baixos (3-20 caràcters)');
+      return;
+    }
 
     if (form.password !== form.confirmPassword) {
       setError('Les contrasenyes no coincideixen');
@@ -29,7 +34,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await register(form.email, form.name, form.password);
+      await register(form.email, form.name, form.password, form.username || undefined);
       router.push('/dashboard');
     } catch (err) {
       setError(err.message || 'Error en crear el compte');
@@ -159,6 +164,35 @@ export default function RegisterPage() {
               onFocus={e => { e.target.style.borderColor = '#C9A84C'; }}
               onBlur={e => { e.target.style.borderColor = '#E8E8E0'; }}
             />
+          </div>
+
+          {/* Nom d'usuari */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: '0.85rem', fontWeight: '500',
+              color: '#0A0A0A', marginBottom: '0.5rem',
+            }}>
+              Nom d&apos;usuari
+            </label>
+            <input
+              type="text"
+              placeholder="joan_garcia"
+              value={form.username}
+              onChange={e => setForm({ ...form, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+              maxLength={20}
+              style={inputStyle}
+              onFocus={e => { e.target.style.borderColor = '#C9A84C'; }}
+              onBlur={e => { e.target.style.borderColor = '#E8E8E0'; }}
+            />
+            <p style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: '0.75rem', color: '#9B9B90',
+              marginTop: '0.35rem',
+            }}>
+              Lletres, números i guió baix. Mínim 3 caràcters. Es pot canviar més endavant.
+            </p>
           </div>
 
           {/* Email */}

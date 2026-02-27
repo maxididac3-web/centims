@@ -3,14 +3,10 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const authenticateToken = require('../middleware/auth');
+const { calculatePriceWithBoosts } = require('../utils/pricing');
 const isAdmin = require('../middleware/admin');
 
 const prisma = new PrismaClient();
-
-// Calcular preu actual
-const calculatePrice = (p0, k, supply) => {
-  return parseFloat(p0) * (1 + parseFloat(k) * parseFloat(supply));
-};
 
 // GET /products - Llistar tots els productes actius
 router.get('/', async (req, res) => {
@@ -19,7 +15,7 @@ router.get('/', async (req, res) => {
       where: { isActive: true },
       include: {
         priceHistory: {
-          orderBy: { timestamp: 'desc' },
+          orderBy: { createdAt: 'desc' },
           take: 7,
         },
         adminBuffer: true,
@@ -30,15 +26,15 @@ router.get('/', async (req, res) => {
     const yesterday = new Date(now - 24 * 60 * 60 * 1000);
 
     const productsWithData = await Promise.all(products.map(async (product) => {
-      const currentPrice = calculatePrice(product.p0, product.k, product.supply);
+      const currentPrice = calculatePriceWithBoosts(product);
 
       // Preu fa 24h
       const priceYesterday = await prisma.priceHistory.findFirst({
         where: {
           productId: product.id,
-          timestamp: { lte: yesterday },
+          createdAt: { lte: yesterday },
         },
-        orderBy: { timestamp: 'desc' },
+        orderBy: { createdAt: 'desc' },
       });
 
       const oldPrice = priceYesterday ? parseFloat(priceYesterday.price) : currentPrice;
@@ -82,7 +78,7 @@ router.get('/all', authenticateToken, isAdmin, async (req, res) => {
     });
 
     const productsWithData = products.map(product => {
-      const currentPrice = calculatePrice(product.p0, product.k, product.supply);
+      const currentPrice = calculatePriceWithBoosts(product);
       return {
         id: product.id,
         name: product.name,
@@ -93,10 +89,19 @@ router.get('/all', authenticateToken, isAdmin, async (req, res) => {
         k: parseFloat(product.k),
         supply: parseFloat(product.supply),
         isActive: product.isActive,
+        isTemporary: !product.isPermanent,
         currentPrice: parseFloat(currentPrice.toFixed(6)),
         bufferFractions: parseFloat(product.adminBuffer?.fractions || 0),
         totalTransactions: product._count.transactions,
         totalHolders: product._count.portfolios,
+        // Boost temporal
+        boostActive: product.boostActive,
+        boostValue: parseFloat(product.boostValue || 1),
+        boostExpiresAt: product.boostExpiresAt,
+        boostDescription: product.boostDescription,
+        // Boost estacional
+        seasonalMultiplier: parseFloat(product.seasonalMultiplier || 1),
+        seasonalNotes: product.seasonalNotes,
       };
     });
 
@@ -115,7 +120,7 @@ router.get('/:id', async (req, res) => {
       where: { id: parseInt(id) },
       include: {
         priceHistory: {
-          orderBy: { timestamp: 'asc' },
+          orderBy: { createdAt: 'asc' },
           take: 30,
         },
         adminBuffer: true,
@@ -124,7 +129,7 @@ router.get('/:id', async (req, res) => {
 
     if (!product) return res.status(404).json({ error: 'Producte no trobat' });
 
-    const currentPrice = calculatePrice(product.p0, product.k, product.supply);
+    const currentPrice = calculatePriceWithBoosts(product);
 
     res.json({
       product: {
@@ -141,7 +146,7 @@ router.get('/:id', async (req, res) => {
 // POST /products - Crear nou token (admin)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { name, emoji, ticker, description, p0, k } = req.body;
+    const { name, emoji, ticker, description, p0, k, isTemporary } = req.body;
 
     if (!name || !emoji || !ticker || !p0 || !k) {
       return res.status(400).json({ error: 'Falten camps obligatoris: name, emoji, ticker, p0, k' });
@@ -170,6 +175,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
           k: parseFloat(k),
           supply: 0,
           isActive: true,
+          isPermanent: !(isTemporary === true || isTemporary === 'true'),
         }
       });
 
@@ -210,7 +216,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, emoji, ticker, description, p0, k, isActive } = req.body;
+    const { name, emoji, ticker, description, p0, k, isActive, isTemporary } = req.body;
 
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) }
@@ -235,10 +241,11 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
         ...(p0 && { p0: parseFloat(p0) }),
         ...(k && { k: parseFloat(k) }),
         ...(isActive !== undefined && { isActive }),
+        ...(isTemporary !== undefined && { isPermanent: !(isTemporary === true || isTemporary === 'true') }),
       }
     });
 
-    const currentPrice = calculatePrice(updated.p0, updated.k, updated.supply);
+    const currentPrice = calculatePriceWithBoosts(updated);
 
     res.json({
       message: 'Token actualitzat',

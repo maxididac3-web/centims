@@ -3,7 +3,7 @@
 export default function Learn() {
   return (
     <section id="apren" style={{
-      padding: '5rem 0',
+      padding: '3rem 0',
       background: '#F5F5F0',
     }}>
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 2rem' }}>

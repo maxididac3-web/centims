@@ -33,10 +33,10 @@ const authFetch = async (endpoint, options = {}) => {
 // AUTH
 // ============================================
 export const authAPI = {
-  register: async (email, name, password) => {
+  register: async (email, name, password, username) => {
     const data = await authFetch('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, name, password }),
+      body: JSON.stringify({ email, name, password, ...(username ? { username } : {}) }),
     });
     if (data.token) {
       localStorage.setItem('centims_token', data.token);
@@ -186,6 +186,20 @@ export const adminAPI = {
       method: 'DELETE',
     });
   },
+
+  setSeasonalBoost: async (id, multiplier, notes) => {
+    return authFetch(`/admin/products/${id}/seasonal-boost`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier, notes }),
+    });
+  },
+
+  setBoost: async (id, data) => {
+    return authFetch(`/admin/products/${id}/boost`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // ============================================
@@ -202,4 +216,99 @@ export const proposalsAPI = {
   getMine: async () => {
     return authFetch('/proposals');
   }
+};
+
+// ============================================
+// RANKINGS
+// ============================================
+export const rankingsAPI = {
+  getCurrent: async () => {
+    return authFetch('/rankings/current');
+  },
+
+  getForMonth: async (month) => {
+    return authFetch(`/rankings/${month}`);
+  },
+
+  getAvailableMonths: async () => {
+    return authFetch('/rankings/months/available');
+  },
+};
+
+// ============================================
+// ASSOLIMENTS
+// ============================================
+export const achievementsAPI = {
+  getForMonth: async (month) => {
+    return authFetch(`/achievements/${month}`);
+  },
+};
+
+// ============================================
+// PREMIS MENSUALS
+// ============================================
+export const prizesAPI = {
+  getForMonth: async (month) => {
+    return authFetch(`/prizes/${month}`);
+  },
+
+  setForMonth: async (month, prizes) => {
+    return authFetch(`/prizes/${month}`, {
+      method: 'POST',
+      body: JSON.stringify({ prizes }),
+    });
+  },
+
+  update: async (month, pos, data) => {
+    return authFetch(`/prizes/${month}/${pos}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// ============================================
+// USUARIS
+// ============================================
+export const usersAPI = {
+  changeUsername: async (username) => {
+    return authFetch('/users/me/username', {
+      method: 'PUT',
+      body: JSON.stringify({ username }),
+    });
+  },
+
+  getStats: async () => {
+    return authFetch('/users/me/stats');
+  },
+};
+
+// ============================================
+// EMAILS (ADMIN)
+// ============================================
+export const emailsAPI = {
+  sendWinners: async (month) => {
+    return authFetch('/emails/send-winners', {
+      method: 'POST',
+      body: JSON.stringify({ month }),
+    });
+  },
+
+  sendWeekly: async () => {
+    return authFetch('/emails/send-weekly', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  sendCustom: async (recipients, subject, body) => {
+    return authFetch('/emails/send-custom', {
+      method: 'POST',
+      body: JSON.stringify({ recipients, subject, body }),
+    });
+  },
+
+  getHistory: async (page = 1) => {
+    return authFetch(`/emails/history?page=${page}`);
+  },
 };

@@ -2,6 +2,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { calculatePrice, processSell } = require('../utils/bondingCurve');
+const { grantCreatorReward } = require('../services/tokenmanagement');
 const authMiddleware = require('../middleware/auth');
 const adminMiddleware = require('../middleware/admin');
 
@@ -516,7 +517,7 @@ router.get('/proposals', authMiddleware, adminMiddleware, async (req, res) => {
       prisma.tokenProposal.findMany({
         where: { status: 'PENDING' },
         include: {
-          user: {
+          proposer: {
             select: { id: true, name: true, email: true }
           }
         },
@@ -525,7 +526,7 @@ router.get('/proposals', authMiddleware, adminMiddleware, async (req, res) => {
       prisma.tokenProposal.findMany({
         where: { status: 'ACCEPTED' },
         include: {
-          user: {
+          proposer: {
             select: { id: true, name: true, email: true }
           },
           reviewer: {
@@ -537,7 +538,7 @@ router.get('/proposals', authMiddleware, adminMiddleware, async (req, res) => {
       prisma.tokenProposal.findMany({
         where: { status: 'REJECTED' },
         include: {
-          user: {
+          proposer: {
             select: { id: true, name: true, email: true }
           },
           reviewer: {
@@ -588,7 +589,7 @@ router.put('/proposals/:id/accept', authMiddleware, adminMiddleware, async (req,
     // Obtenir proposta
     const proposal = await prisma.tokenProposal.findUnique({
       where: { id: parseInt(id) },
-      include: { user: true }
+      include: { proposer: true }
     });
 
     if (!proposal) {
@@ -626,7 +627,7 @@ router.put('/proposals/:id/accept', authMiddleware, adminMiddleware, async (req,
           description: proposal.description,
           p0: parseFloat(p0),
           k: parseFloat(k),
-          supply: 10, // 10 fraccions inicials pel creador
+          supply: 0, // grantCreatorReward incrementarà el supply
           isActive: true,
           createdBy: adminId
         }
@@ -641,27 +642,16 @@ router.put('/proposals/:id/accept', authMiddleware, adminMiddleware, async (req,
         }
       });
 
-      // 3. Crear portfolio pel creador amb 100 fraccions
-      await tx.portfolio.create({
-        data: {
-          userId: proposal.userId,
-          productId: product.id,
-          fractions: 10,
-          investedEUR: 0, // Gratis
-          avgPrice: 0
-        }
-      });
-
-      // 4. Registrar preu inicial
+      // 3. Registrar preu inicial
       await tx.priceHistory.create({
         data: {
           productId: product.id,
           price: parseFloat(p0),
-          supply: 100
+          supply: 10 // Supply real amb fraccions del creador
         }
       });
 
-      // 5. Actualitzar proposta a ACCEPTED
+      // 4. Actualitzar proposta a ACCEPTED
       const updatedProposal = await tx.tokenProposal.update({
         where: { id: parseInt(id) },
         data: {
@@ -673,6 +663,9 @@ router.put('/proposals/:id/accept', authMiddleware, adminMiddleware, async (req,
 
       return { product, updatedProposal };
     });
+
+    // Donar 10 fraccions gratis al creador via service
+    await grantCreatorReward(result.product.id, proposal.proposedBy);
 
     return res.status(200).json({
       message: `Token "${result.product.name}" creat i activat! L'usuari ha rebut 10 fraccions.`,
@@ -718,7 +711,7 @@ router.put('/proposals/:id/reject', authMiddleware, adminMiddleware, async (req,
       where: { id: parseInt(id) },
       data: {
         status: 'REJECTED',
-        rejectionReason: reason || null,
+        reviewNotes: reason || null,
         reviewedAt: new Date(),
         reviewedBy: adminId
       }
@@ -818,7 +811,7 @@ router.delete('/products/:id', authMiddleware, adminMiddleware, async (req, res)
           where: { id: proposal.id },
           data: {
             status: 'REJECTED',
-            rejectionReason: 'Token eliminat per l\'administrador',
+            reviewNotes: 'Token eliminat per l\'administrador',
             reviewedAt: new Date(),
             reviewedBy: req.user.id
           }
@@ -842,6 +835,128 @@ router.delete('/products/:id', authMiddleware, adminMiddleware, async (req, res)
     return res.status(500).json({
       error: 'Error intern del servidor'
     });
+  }
+});
+
+// ============================================
+// PUT /admin/products/:id/boost
+// Aplicar/eliminar boost temporal a un token
+// ============================================
+router.put('/products/:id/boost', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { boostValue, boostDescription, boostHours, active } = req.body;
+
+    const product = await prisma.product.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!product) {
+      return res.status(404).json({ error: 'Token no trobat' });
+    }
+
+    let updateData;
+
+    if (active === false) {
+      // Desactivar boost
+      updateData = {
+        boostActive: false,
+        boostValue: 1.0,
+        boostExpiresAt: null,
+        boostDescription: null,
+      };
+    } else {
+      // Activar boost
+      if (!boostValue || boostValue <= 0) {
+        return res.status(400).json({ error: 'boostValue ha de ser positiu' });
+      }
+      if (!boostHours || boostHours <= 0) {
+        return res.status(400).json({ error: 'boostHours ha de ser positiu' });
+      }
+
+      const boostExpiresAt = new Date(Date.now() + boostHours * 60 * 60 * 1000);
+
+      updateData = {
+        boostActive: true,
+        boostValue: parseFloat(boostValue),
+        boostExpiresAt,
+        boostDescription: boostDescription || null,
+      };
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    const { calculatePriceWithBoosts } = require('../utils/pricing');
+    const newPrice = calculatePriceWithBoosts(updated);
+
+    return res.status(200).json({
+      message: active === false
+        ? `Boost desactivat per "${updated.name}"`
+        : `Boost x${boostValue} activat per "${updated.name}" durant ${boostHours}h`,
+      product: {
+        id: updated.id,
+        name: updated.name,
+        boostActive: updated.boostActive,
+        boostValue: updated.boostValue,
+        boostDescription: updated.boostDescription,
+        boostExpiresAt: updated.boostExpiresAt,
+        newPrice: parseFloat(newPrice.toFixed(6)),
+      },
+    });
+
+  } catch (error) {
+    console.error('Error boost:', error);
+    return res.status(500).json({ error: 'Error intern del servidor' });
+  }
+});
+
+// ============================================
+// PUT /admin/products/:id/seasonal-boost
+// Aplicar/eliminar boost estacional a un token
+// ============================================
+router.put('/products/:id/seasonal-boost', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { multiplier, notes } = req.body;
+
+    const product = await prisma.product.findUnique({ where: { id: parseInt(id) } });
+    if (!product) return res.status(404).json({ error: 'Token no trobat' });
+
+    const mult = parseFloat(multiplier);
+    if (isNaN(mult) || mult <= 0) {
+      return res.status(400).json({ error: 'El multiplicador ha de ser un número positiu (ex: 1.5 o 0.85)' });
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: parseInt(id) },
+      data: {
+        seasonalMultiplier: mult,
+        seasonalNotes: notes || null,
+      },
+    });
+
+    const { calculatePriceWithBoosts } = require('../utils/pricing');
+    const newPrice = calculatePriceWithBoosts(updated);
+
+    return res.status(200).json({
+      message: mult === 1.0
+        ? `Boost estacional desactivat per "${updated.name}"`
+        : `Boost estacional x${mult} aplicat a "${updated.name}"`,
+      product: {
+        id: updated.id,
+        name: updated.name,
+        seasonalMultiplier: updated.seasonalMultiplier,
+        seasonalNotes: updated.seasonalNotes,
+        newPrice: parseFloat(newPrice.toFixed(6)),
+      },
+    });
+
+  } catch (error) {
+    console.error('Error boost estacional:', error);
+    return res.status(500).json({ error: 'Error intern del servidor' });
   }
 });
 

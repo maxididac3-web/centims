@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
-import { productsAPI, portfolioAPI, transactionsAPI, proposalsAPI } from '@/lib/api';
+import { productsAPI, portfolioAPI, transactionsAPI, proposalsAPI, rankingsAPI, achievementsAPI, prizesAPI, usersAPI } from '@/lib/api';
 
 const SELL_SPREAD = 0.015;
 
@@ -93,7 +93,22 @@ export default function DashboardPage() {
   const [proposalError, setProposalError] = useState('');
   const [proposalSuccess, setProposalSuccess] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState('');
 
+
+  // Classificació tab
+  const [rankings, setRankings] = useState([]);
+  const [rankingMonth, setRankingMonth] = useState('current');
+  const [availableMonths, setAvailableMonths] = useState([]);
+  const [prizes, setPrizes] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
+
+  // Perfil tab
+  const [userStats, setUserStats] = useState(null);
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameSuccess, setUsernameSuccess] = useState('');
 
   const [modal, setModal] = useState(null);
   const [tradeAmount, setTradeAmount] = useState('');
@@ -108,6 +123,15 @@ export default function DashboardPage() {
     if (!user) { router.push('/login'); return; }
     fetchData();
   }, [user, authLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'classificacio') fetchRanking(rankingMonth);
+    if (activeTab === 'perfil' && !userStats) fetchUserStats();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'classificacio') fetchRanking(rankingMonth);
+  }, [rankingMonth]);
 
   const fetchData = async () => {
     try {
@@ -151,6 +175,48 @@ export default function DashboardPage() {
       setProposals(data.proposals || []);
     } catch (err) {
       console.error('Error carregant propostes:', err);
+    }
+  };
+
+  const fetchRanking = async (month) => {
+    setRankingLoading(true);
+    try {
+      const [monthsData, rankData] = await Promise.all([
+        rankingsAPI.getAvailableMonths().catch(() => ({ months: [] })),
+        month === 'current'
+          ? rankingsAPI.getCurrent().catch(() => ({ rankings: [] }))
+          : rankingsAPI.getForMonth(month).catch(() => ({ rankings: [] })),
+      ]);
+      setAvailableMonths(monthsData.months || []);
+      setRankings(rankData.rankings || []);
+
+      const now = new Date();
+      const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const targetMonth = month === 'current' ? currentMonthStr : month;
+      if (targetMonth) {
+        const [prizesData, achData] = await Promise.all([
+          prizesAPI.getForMonth(targetMonth).catch(() => ({ prizes: [] })),
+          achievementsAPI.getForMonth(targetMonth).catch(() => ({ achievements: [] })),
+        ]);
+        setPrizes(prizesData.prizes || []);
+        setAchievements((achData.achievements || []).slice(0, 4));
+      }
+    } catch (err) {
+      console.error('Error carregant classificació:', err);
+    } finally {
+      setRankingLoading(false);
+    }
+  };
+
+  const fetchUserStats = async () => {
+    try {
+      const [data] = await Promise.all([
+        usersAPI.getStats(),
+        refreshUser(), // Actualitza user (username, createdAt...) des del backend
+      ]);
+      setUserStats(data);
+    } catch (err) {
+      console.error('Error carregant stats usuari:', err);
     }
   };
 
@@ -296,10 +362,12 @@ export default function DashboardPage() {
         </div>
 
         {/* TABS */}
-        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {[
-            { id: 'cartera', label: 'La meva cartera' }, 
-            { id: 'mercat', label: 'Mercat' }, 
+            { id: 'cartera', label: 'La meva cartera' },
+            { id: 'mercat', label: 'Mercat' },
+            { id: 'classificacio', label: 'Classificació' },
+            { id: 'perfil', label: 'Perfil' },
             { id: 'crea', label: 'Crea el teu token' },
             { id: 'historial', label: 'Historial' }
           ].map(tab => (
@@ -565,6 +633,12 @@ export default function DashboardPage() {
                     Emoji
                   </label>
                   <div style={{ position: 'relative' }}>
+                    {showEmojiPicker && (
+                      <div
+                        onClick={() => { setShowEmojiPicker(false); setEmojiSearch(''); }}
+                        style={{ position: 'fixed', inset: 0, zIndex: 199 }}
+                      />
+                    )}
                     <button
                       onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                       type="button"
@@ -578,33 +652,93 @@ export default function DashboardPage() {
                     >
                       {proposalForm.emoji}
                     </button>
-                    {showEmojiPicker && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                        background: '#FFFFFF', border: '1px solid #E8E8E0',
-                        borderRadius: '10px', padding: '1rem', marginTop: '0.5rem',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                        display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '0.5rem',
-                        maxWidth: '400px',
-                      }}>
-                        {['🎯', '🍅', '⚽', '🏔️', '🧅', '⛪', '💩', '🚄', '💃', '💶', '🗿', '🧠', '🎨', '📚', '🎵', '🍷', '🏛️', '⚡', '🌊', '🔥', '🌟', '🎭', '🎪', '🎬'].map(e => (
-                          <button
-                            key={e}
-                            onClick={() => { setProposalForm({ ...proposalForm, emoji: e }); setShowEmojiPicker(false); }}
-                            type="button"
-                            style={{
-                              fontSize: '1.8rem', padding: '0.5rem',
-                              background: 'transparent', border: 'none',
-                              cursor: 'pointer', borderRadius: '6px',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F0'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                          >
-                            {e}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {showEmojiPicker && (() => {
+                      const ALL_EMOJIS = [
+                        // Esports i activitat
+                        '⚽','🏀','🏈','⚾','🎾','🏐','🏉','🎱','🏓','🏸','🥊','🥋','🎯','⛳','🏹','🎣','🤿','🎽','🎿','🛷','⛸️','🥅','🏒','🏑','🏏','🥌','🏂','🤺','🏇','🏋️','🤸','⛹️','🤾','🧗','🚵','🚴','🤼','🤽','🏄',
+                        // Animals
+                        '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐈','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🦔',
+                        // Menjar i beguda
+                        '🍎','🍊','🍋','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🥖','🫓','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫔','🥪','🥙','🧆','🌮','🌯','🫕','🥗','🥘','🫙','🍱','🍣','🍤','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🍞','🥜','🍯','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾','🧊','🥤','🧃','☕','🍵','🫖','🧋',
+                        // Viatge i llocs
+                        '🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','⛩️','🕍','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','🗾','🎑','🎠','🎡','🎢','🎪','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🏎️','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🛻','🚚','🚛','🚜','🛵','🏍️','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🚨','🚥','🚦','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸',
+                        // Símbols i objectes
+                        '💎','🔮','🧿','🪬','💡','🔦','🕯️','🪔','🧲','⚗️','🔭','🔬','🩻','💊','🩹','🩺','🧬','🦠','🧫','🧪','🌡️','🧯','🛢️','💰','💴','💵','💶','💷','💸','💳','🪙','💹','📈','📉','📊','📋','📌','📍','🗂️','📁','📂','📓','📔','📒','📕','📗','📘','📙','📚','📖','🔖','🏷️','💡','🔑','🗝️','🔨','🪓','⛏️','⚒️','🛠️','🗡️','⚔️','🛡️','🪚','🔧','🪛','🔩','⚙️','🗜️','⚖️','🦯','🔗','⛓️','🪝','🧰','🪤','🧲','🪜','🧱','🪞','🪟','🛏️','🛋️','🪑','🚿','🛁','🪠','🧴','🧷','🧹','🧺','🧻','🪣','🧼','🫧','🪥','🧽','🧯','🛒',
+                        // Art i entreteniment
+                        '🎨','🖌️','🖍️','✏️','📝','✒️','🖊️','📐','📏','📌','📎','🖇️','🗃️','🗄️','🗑️','🎭','🎬','🎥','📽️','🎞️','📷','📸','📹','🎙️','🎚️','🎛️','📻','📺','📠','📟','📞','☎️','🎵','🎶','🎼','🎹','🎸','🎷','🎺','🥁','🪘','🎻','🪕','🎤','🎧','🎮','🕹️','🎲','🎯','🎳','🎰','🃏','🀄','♟️',
+                        // Natura i temps
+                        '🌍','🌎','🌏','🌐','🗺️','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌙','🌚','🌛','🌜','🌝','🌞','⭐','🌟','💫','✨','⚡','🌈','☀️','🌤️','⛅','🌥️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','🌬️','💨','🌪️','🌫️','🌊','🌀','🌁','🌂','☂️','☃️','⛄','🌸','🌺','🌻','🌹','🥀','🌷','🌱','🌲','🌳','🌴','🌵','🎋','🎍','🍀','☘️','🍁','🍂','🍃','🍄','🪸','🪨','🪵','🌾','💐','🌿',
+                        // Cares i persones
+                        '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🫣','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥸','🥳','🥺','😭','😢','😤','😠','😡','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','💋','👋','✋','🖐️','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🙏','✍️','💅','🤳','💪','🦾','🦵','🦶','👁️','👅','🫀','🫁','🧠','🦷','🦴',
+                        // Miscel·lània
+                        '🔥','💥','✨','🎉','🎊','🎈','🎁','🎀','🎗️','🎟️','🎫','🏆','🥇','🥈','🥉','🏅','🎖️','🔱','🎗️','🏵️','🎪','🎠','🎡','🎢','🎭','🎨','🎰','🎲','🎯','🎳','🎮','🕹️','🎻','🎸','🎵','🎶','🎤','🎧','📱','💻','🖥️','⌨️','🖱️','🖨️','📲','📳','📴','📵','🔕','🔔','🔊','📢','📣','🔔','⏰','⌚','⏱️','⏲️','🕰️','⌛','⏳','📡','🔋','🪫','🔌','💡','🔦','🕯️','🪔','💎','💰','💸','🌐','🗺️','🧭',
+                      ];
+                      const filtered = emojiSearch.trim()
+                        ? ALL_EMOJIS.filter(e => {
+                            const name = e.codePointAt(0)?.toString(16) || '';
+                            return e.includes(emojiSearch) || name.includes(emojiSearch.toLowerCase());
+                          })
+                        : ALL_EMOJIS;
+                      return (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, zIndex: 200,
+                          background: '#FFFFFF', border: '1px solid #E8E8E0',
+                          borderRadius: '12px', padding: '0.75rem', marginTop: '0.5rem',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                          width: '320px',
+                        }}>
+                          {/* Cerca */}
+                          <div style={{ marginBottom: '0.5rem', position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem', color: '#9B9B90' }}>🔍</span>
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Cerca un emoji..."
+                              value={emojiSearch}
+                              onChange={ev => setEmojiSearch(ev.target.value)}
+                              style={{
+                                width: '100%', padding: '0.5rem 0.75rem 0.5rem 2rem',
+                                fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem',
+                                border: '1.5px solid #E8E8E0', borderRadius: '8px',
+                                outline: 'none', boxSizing: 'border-box', background: '#FAFAF8',
+                              }}
+                            />
+                          </div>
+                          {/* Grid scrollable */}
+                          <div style={{
+                            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '2px',
+                            maxHeight: '240px', overflowY: 'auto',
+                          }}>
+                            {filtered.length === 0 ? (
+                              <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '1.5rem', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem' }}>
+                                Cap resultat
+                              </div>
+                            ) : filtered.map((e, idx) => (
+                              <button
+                                key={`${e}-${idx}`}
+                                onClick={() => { setProposalForm(f => ({ ...f, emoji: e })); setShowEmojiPicker(false); setEmojiSearch(''); }}
+                                type="button"
+                                title={e}
+                                style={{
+                                  fontSize: '1.4rem', padding: '4px',
+                                  background: 'transparent', border: 'none',
+                                  cursor: 'pointer', borderRadius: '6px',
+                                  lineHeight: 1,
+                                }}
+                                onMouseEnter={ev => { ev.currentTarget.style.background = '#F5F5F0'; }}
+                                onMouseLeave={ev => { ev.currentTarget.style.background = 'transparent'; }}
+                              >
+                                {e}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Comptador */}
+                          <div style={{ marginTop: '0.4rem', textAlign: 'right', fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90' }}>
+                            {filtered.length} emojis
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -783,6 +917,368 @@ export default function DashboardPage() {
           </div>
         )}
 
+
+        {/* TAB: CLASSIFICACIÓ */}
+        {activeTab === 'classificacio' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+            {/* Selector de mes */}
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setRankingMonth('current')}
+                style={{
+                  background: rankingMonth === 'current' ? '#0A0A0A' : 'transparent',
+                  color: rankingMonth === 'current' ? '#FAFAF8' : '#6B6B60',
+                  padding: '0.5rem 1.25rem',
+                  fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '500',
+                  border: '1.5px solid', borderColor: rankingMonth === 'current' ? '#0A0A0A' : '#E8E8E0',
+                  borderRadius: '50px', cursor: 'pointer',
+                }}
+              >
+                Mes actual
+              </button>
+              {availableMonths.map(m => (
+                <button key={m}
+                  onClick={() => setRankingMonth(m)}
+                  style={{
+                    background: rankingMonth === m ? '#0A0A0A' : 'transparent',
+                    color: rankingMonth === m ? '#FAFAF8' : '#6B6B60',
+                    padding: '0.5rem 1.25rem',
+                    fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '500',
+                    border: '1.5px solid', borderColor: rankingMonth === m ? '#0A0A0A' : '#E8E8E0',
+                    borderRadius: '50px', cursor: 'pointer', textTransform: 'capitalize',
+                  }}
+                >
+                  {new Date(m + '-01').toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' })}
+                </button>
+              ))}
+            </div>
+
+            {rankingLoading ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>
+                Carregant classificació...
+              </div>
+            ) : (
+              <>
+                {rankingMonth === 'current' ? (
+                  <>
+                    {/* MES ACTUAL — Taula classificació completa */}
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1fr 1fr',
+                        padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '700px',
+                      }}>
+                        {['#', 'Jugador', 'Tokens', 'Saldo', 'Invertit', 'Valor', 'Guany%'].map((col, i) => (
+                          <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i > 1 ? 'right' : 'left', display: 'block' }}>{col}</span>
+                        ))}
+                      </div>
+                      {rankings.length === 0 ? (
+                        <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>
+                          La classificació s&apos;actualitza al tancament del mes
+                        </div>
+                      ) : rankings.map((entry, i) => {
+                        const isMe = entry.userId === user?.id;
+                        return (
+                          <div key={entry.userId} style={{
+                            display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1fr 1fr',
+                            padding: '0.875rem 1.5rem', borderBottom: i < rankings.length - 1 ? '1px solid #F5F5F0' : 'none',
+                            alignItems: 'center', background: isMe ? 'rgba(201,168,76,0.12)' : 'transparent', minWidth: '700px',
+                          }}>
+                            <div style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
+                              {entry.position <= 3 ? ['🥇','🥈','🥉'][entry.position-1] : `#${entry.position}`}
+                            </div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
+                              {entry.username}{isMe && <span style={{ color: '#C9A84C', marginLeft: '0.35rem', fontSize: '0.75rem' }}>← tu</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end' }}>
+                              {(entry.tokensOwned || []).slice(0, 4).map((t, j) => <span key={j} style={{ fontSize: '0.9rem' }}>{t.split(' ')[0]}</span>)}
+                            </div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.balanceEUR || 0).toFixed(2)}€</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.investedValue || 0).toFixed(2)}€</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.totalValue || 0).toFixed(2)}€</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: (entry.gainPercent || 0) >= 0 ? '#2D6A4F' : '#C1121F', textAlign: 'right' }}>
+                              {(entry.gainPercent || 0) >= 0 ? '+' : ''}{parseFloat(entry.gainPercent || 0).toFixed(1)}%
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Assoliments */}
+                    {achievements.length > 0 && (
+                      <div>
+                        <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1rem' }}>Assoliments del mes</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                          {achievements.map(ach => (
+                            <div key={ach.id} style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <span style={{ fontSize: '1.75rem' }}>⭐</span>
+                              <div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', fontWeight: '600', color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{ach.achievementType?.replace(/_/g, ' ')}</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{ach.description || ach.username}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Premis del mes actual */}
+                    <div>
+                      <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1rem' }}>Premis del mes</h3>
+                      <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '50px 1.5fr 1.5fr 1fr', padding: '0.6rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '500px' }}>
+                          {['#', 'Nom del Premi', 'Nom del Patrocinador', 'Enllaç'].map((col, i) => (
+                            <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{col}</span>
+                          ))}
+                        </div>
+                        {Array.from({ length: 10 }, (_, i) => i + 1).map((pos, i) => {
+                          const prize = prizes.find(p => p.position === pos);
+                          return (
+                            <div key={pos} style={{ display: 'grid', gridTemplateColumns: '50px 1.5fr 1.5fr 1fr', padding: '0.75rem 1.5rem', borderBottom: i < 9 ? '1px solid #F5F5F0' : 'none', alignItems: 'center', minWidth: '500px' }}>
+                              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', fontWeight: '700', color: pos <= 3 ? '#C9A84C' : '#9B9B90' }}>#{pos}</span>
+                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', color: prize?.prizeName ? '#0A0A0A' : '#D0D0C8' }}>{prize?.prizeName || '—'}</span>
+                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', color: prize?.sponsorName ? '#C9A84C' : '#D0D0C8', fontWeight: prize?.sponsorName ? '500' : '400' }}>{prize?.sponsorName || '—'}</span>
+                              <span>{prize?.sponsorLink ? <a href={prize.sponsorLink} target="_blank" rel="noopener noreferrer" style={{ color: '#0A0A0A', textDecoration: 'none', border: '1px solid #E8E8E0', borderRadius: '6px', padding: '0.2rem 0.6rem', fontSize: '0.78rem', display: 'inline-block' }}>Visitar →</a> : <span style={{ color: '#D0D0C8', fontSize: '0.88rem' }}>—</span>}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* MES PASSAT — Taula fusionada: classificació + premis */}
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr',
+                        padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '860px',
+                      }}>
+                        {['#', 'Jugador', 'Tokens', 'Patrimoni final', 'Guany%', 'Premi', 'Patrocinador', 'Enllaç'].map((col, i) => (
+                          <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i >= 3 && i <= 4 ? 'right' : 'left', display: 'block' }}>{col}</span>
+                        ))}
+                      </div>
+                      {rankings.length === 0 ? (
+                        <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>
+                          No hi ha dades per aquest mes
+                        </div>
+                      ) : rankings.map((entry, i) => {
+                        const isMe = entry.userId === user?.id;
+                        const prize = prizes.find(p => p.position === entry.position);
+                        return (
+                          <div key={entry.userId} style={{
+                            display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr',
+                            padding: '0.875rem 1.5rem', borderBottom: i < rankings.length - 1 ? '1px solid #F5F5F0' : 'none',
+                            alignItems: 'center', background: isMe ? 'rgba(201,168,76,0.12)' : 'transparent', minWidth: '860px',
+                          }}>
+                            {/* # */}
+                            <div style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
+                              {entry.position <= 3 ? ['🥇','🥈','🥉'][entry.position-1] : `#${entry.position}`}
+                            </div>
+                            {/* Jugador */}
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
+                              {entry.username}{isMe && <span style={{ color: '#C9A84C', marginLeft: '0.35rem', fontSize: '0.75rem' }}>← tu</span>}
+                            </div>
+                            {/* Tokens */}
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                              {(entry.tokensOwned || []).slice(0, 4).map((t, j) => <span key={j} style={{ fontSize: '0.9rem' }}>{t.split(' ')[0]}</span>)}
+                            </div>
+                            {/* Patrimoni final */}
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.totalValue || 0).toFixed(2)}€</div>
+                            {/* Guany% */}
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: (entry.gainPercent || 0) >= 0 ? '#2D6A4F' : '#C1121F', textAlign: 'right' }}>
+                              {(entry.gainPercent || 0) >= 0 ? '+' : ''}{parseFloat(entry.gainPercent || 0).toFixed(1)}%
+                            </div>
+                            {/* Premi */}
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: prize?.prizeName ? '#0A0A0A' : '#D0D0C8' }}>{prize?.prizeName || '—'}</div>
+                            {/* Patrocinador */}
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: prize?.sponsorName ? '#C9A84C' : '#D0D0C8', fontWeight: prize?.sponsorName ? '500' : '400' }}>{prize?.sponsorName || '—'}</div>
+                            {/* Enllaç */}
+                            <div>{prize?.sponsorLink ? <a href={prize.sponsorLink} target="_blank" rel="noopener noreferrer" style={{ color: '#0A0A0A', textDecoration: 'none', border: '1px solid #E8E8E0', borderRadius: '6px', padding: '0.2rem 0.6rem', fontSize: '0.78rem', display: 'inline-block' }}>Visitar →</a> : <span style={{ color: '#D0D0C8', fontSize: '0.85rem' }}>—</span>}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Assoliments */}
+                    {achievements.length > 0 && (
+                      <div>
+                        <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1rem' }}>Assoliments del mes</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                          {achievements.map(ach => (
+                            <div key={ach.id} style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <span style={{ fontSize: '1.75rem' }}>⭐</span>
+                              <div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', fontWeight: '600', color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{ach.achievementType?.replace(/_/g, ' ')}</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{ach.description || ach.username}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* TAB: PERFIL */}
+        {activeTab === 'perfil' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+            {/* Informació personal */}
+            <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '2rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.4rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1.5rem' }}>
+                Informació personal
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
+                {[
+                  { label: 'Username', value: user?.username || '—' },
+                  { label: 'Nom', value: user?.name || '—' },
+                  { label: 'Email', value: user?.email || '—' },
+                  { label: 'Membre des de', value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('ca-ES', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>
+                      {item.label}
+                    </div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', color: '#0A0A0A' }}>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Estadístiques */}
+            <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '2rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.4rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1.5rem' }}>
+                Estadístiques
+              </h3>
+              {!userStats ? (
+                <div style={{ color: '#9B9B90', fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem' }}>Carregant...</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+                  {[
+                    { label: 'Total transaccions', value: userStats.totalTransactions || 0 },
+                    { label: 'Mesos actiu', value: userStats.monthsActive || 0 },
+                    { label: 'Millor posició', value: userStats.bestPosition ? `#${userStats.bestPosition}` : '—' },
+                    { label: 'Assoliments', value: userStats.totalAchievements || 0 },
+                  ].map(stat => (
+                    <div key={stat.label} style={{ background: '#F8F8F4', borderRadius: '10px', padding: '1.25rem' }}>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+                        {stat.label}
+                      </div>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: '700', color: '#0A0A0A' }}>
+                        {stat.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Configuració */}
+            <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '2rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.4rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1.5rem' }}>
+                Configuració del compte
+              </h3>
+
+              {/* Canviar username */}
+              <div style={{ marginBottom: '2rem', paddingBottom: '2rem', borderBottom: '1px solid #F0F0E8' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '600', color: '#0A0A0A', marginBottom: '0.5rem' }}>
+                  Canviar username
+                </h4>
+                {(() => {
+                  const canChange = !user?.usernameUpdatedAt || (() => {
+                    const threeMonthsAgo = new Date();
+                    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                    return new Date(user.usernameUpdatedAt) <= threeMonthsAgo;
+                  })();
+                  const nextChange = user?.usernameUpdatedAt ? (() => {
+                    const d = new Date(user.usernameUpdatedAt);
+                    d.setMonth(d.getMonth() + 3);
+                    return d.toLocaleDateString('ca-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+                  })() : null;
+                  return (
+                    <>
+                      {!canChange && (
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', color: '#9B9B90', marginBottom: '1rem' }}>
+                          Podràs canviar el username el {nextChange}
+                        </p>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          value={newUsername}
+                          onChange={e => setNewUsername(e.target.value)}
+                          placeholder="nou_username"
+                          disabled={!canChange}
+                          style={{
+                            padding: '0.75rem 1rem', flex: 1, minWidth: '200px',
+                            fontFamily: "'DM Sans', sans-serif", fontSize: '0.95rem',
+                            color: '#0A0A0A', background: canChange ? '#FAFAF8' : '#F5F5F0',
+                            border: '1.5px solid #E8E8E0', borderRadius: '10px',
+                            outline: 'none', boxSizing: 'border-box',
+                            opacity: canChange ? 1 : 0.6,
+                          }}
+                        />
+                        <button
+                          disabled={!canChange || !newUsername}
+                          onClick={async () => {
+                            setUsernameError('');
+                            setUsernameSuccess('');
+                            try {
+                              await usersAPI.changeUsername(newUsername);
+                              setUsernameSuccess('Username actualitzat correctament!');
+                              setNewUsername('');
+                              if (refreshUser) await refreshUser();
+                            } catch (err) {
+                              setUsernameError(err.message || 'Error canviant el username');
+                            }
+                          }}
+                          style={{
+                            background: canChange && newUsername ? '#C9A84C' : '#E8E8E0',
+                            color: canChange && newUsername ? '#0A0A0A' : '#9B9B90',
+                            padding: '0.75rem 1.5rem',
+                            fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '0.9rem',
+                            border: 'none', borderRadius: '10px',
+                            cursor: canChange && newUsername ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          Canviar
+                        </button>
+                      </div>
+                      {usernameError && <p style={{ color: '#C1121F', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', marginTop: '0.5rem' }}>{usernameError}</p>}
+                      {usernameSuccess && <p style={{ color: '#2D6A4F', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', marginTop: '0.5rem' }}>{usernameSuccess}</p>}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Canviar contrasenya */}
+              <div style={{ marginBottom: '2rem', paddingBottom: '2rem', borderBottom: '1px solid #F0F0E8' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '600', color: '#0A0A0A', marginBottom: '0.5rem' }}>
+                  Canviar contrasenya
+                </h4>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#9B9B90' }}>
+                  Aviat disponible
+                </p>
+              </div>
+
+              {/* Eliminar compte */}
+              <div>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '600', color: '#C1121F', marginBottom: '0.5rem' }}>
+                  Eliminar compte
+                </h4>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#9B9B90' }}>
+                  Contacta amb <a href="mailto:info@centims.cat" style={{ color: '#C9A84C', textDecoration: 'none' }}>info@centims.cat</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TAB: HISTORIAL */}
         {activeTab === 'historial' && (

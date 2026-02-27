@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
-import { adminAPI } from '@/lib/api';
+import { adminAPI, rankingsAPI, achievementsAPI, prizesAPI, emailsAPI } from '@/lib/api';
 
 // API calls especifics per admin
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -43,7 +43,7 @@ export default function AdminPage() {
 
   // Modal crear/editar token
   const [tokenModal, setTokenModal] = useState(null); // null | 'create' | {token}
-  const [tokenForm, setTokenForm] = useState({ name: '', emoji: '', ticker: '', description: '', p0: '', k: '' });
+  const [tokenForm, setTokenForm] = useState({ name: '', emoji: '', ticker: '', description: '', p0: '', k: '', isTemporary: false });
   const [tokenLoading, setTokenLoading] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const [tokenSuccess, setTokenSuccess] = useState('');
@@ -52,6 +52,46 @@ export default function AdminPage() {
   const [balanceModal, setBalanceModal] = useState(null); // null | {user}
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceLoading, setBalanceLoading] = useState(false);
+
+  // Classificació (admin)
+  const [adminRankings, setAdminRankings] = useState([]);
+  const [adminRankingMonth, setAdminRankingMonth] = useState('current');
+  const [adminAvailableMonths, setAdminAvailableMonths] = useState([]);
+  const [adminPrizes, setAdminPrizes] = useState([]);
+  const [adminAchievements, setAdminAchievements] = useState([]);
+  const [adminRankingLoading, setAdminRankingLoading] = useState(false);
+
+  // Premis (admin)
+  const [prizesMonth, setPrizesMonth] = useState('');
+  const [prizesData, setPrizesData] = useState(Array.from({ length: 10 }, (_, i) => ({ position: i + 1, prizeName: '', sponsorName: '', sponsorLink: '' })));
+  const [editingPrize, setEditingPrize] = useState(null);
+  const [prizeEditForm, setPrizeEditForm] = useState({ prizeName: '', sponsorName: '', sponsorLink: '' });
+  const [prizesLoading, setPrizesLoading] = useState(false);
+
+  // Comunicacions (admin)
+  const [emailHistory, setEmailHistory] = useState([]);
+  const [emailHistoryPage, setEmailHistoryPage] = useState(1);
+  const [emailViewModal, setEmailViewModal] = useState(null);
+  const [winnersMonth, setWinnersMonth] = useState('');
+  const [customRecipients, setCustomRecipients] = useState('');
+  const [customSubject, setCustomSubject] = useState('');
+  const [customBody, setCustomBody] = useState('');
+  const [emailSending, setEmailSending] = useState('');
+  const [emailMsg, setEmailMsg] = useState({});
+
+  // Historial (admin)
+  const [adminTransactions, setAdminTransactions] = useState([]);
+
+  // Boost modal (Tokens tab)
+  const [boostModal, setBoostModal] = useState(null);
+  const [boostTemporalActive, setBoostTemporalActive] = useState(false);
+  const [boostTemporalDies, setBoostTemporalDies] = useState('');
+  const [boostTemporalMult, setBoostTemporalMult] = useState('');
+  const [boostTemporalNotes, setBoostTemporalNotes] = useState('');
+  const [boostSeasonalActive, setBoostSeasonalActive] = useState(false);
+  const [boostSeasonalMult, setBoostSeasonalMult] = useState('');
+  const [boostSeasonalNotes, setBoostSeasonalNotes] = useState('');
+  const [boostLoading, setBoostLoading] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -94,7 +134,7 @@ export default function AdminPage() {
 
   // TOKENS
   const openCreateToken = () => {
-    setTokenForm({ name: '', emoji: '', ticker: '', description: '', p0: '', k: '' });
+    setTokenForm({ name: '', emoji: '', ticker: '', description: '', p0: '', k: '', isTemporary: false });
     setTokenError('');
     setTokenSuccess('');
     setTokenModal('create');
@@ -108,6 +148,7 @@ export default function AdminPage() {
       description: token.description || '',
       p0: token.p0.toString(),
       k: token.k.toString(),
+      isTemporary: token.isTemporary || false,
     });
     setTokenError('');
     setTokenSuccess('');
@@ -230,6 +271,108 @@ export default function AdminPage() {
     }
   };
 
+  const fetchAdminTransactions = async (page = 1) => {
+    try {
+      const data = await adminAPI.getTransactions(page);
+      setAdminTransactions(data.transactions || []);
+      setAdminTxTotal(data.total || 0);
+      setAdminTxPage(page);
+    } catch (err) {
+      console.error('Error carregant transaccions admin:', err);
+    }
+  };
+
+  const fetchAdminRanking = async (month) => {
+    setAdminRankingLoading(true);
+    try {
+      const [monthsData, rankData] = await Promise.all([
+        rankingsAPI.getAvailableMonths().catch(() => ({ months: [] })),
+        month === 'current'
+          ? rankingsAPI.getCurrent().catch(() => ({ rankings: [] }))
+          : rankingsAPI.getForMonth(month).catch(() => ({ rankings: [] })),
+      ]);
+      setAdminAvailableMonths(monthsData.months || []);
+      setAdminRankings(rankData.rankings || []);
+      const targetMonth = month === 'current' ? (monthsData.months?.[0] || '') : month;
+      if (targetMonth) {
+        const [pData, aData] = await Promise.all([
+          prizesAPI.getForMonth(targetMonth).catch(() => ({ prizes: [] })),
+          achievementsAPI.getForMonth(targetMonth).catch(() => ({ achievements: [] })),
+        ]);
+        setAdminPrizes(pData.prizes || []);
+        setAdminAchievements((aData.achievements || []).slice(0, 4));
+      }
+    } catch (err) {
+      console.error('Error carregant classificació admin:', err);
+    } finally {
+      setAdminRankingLoading(false);
+    }
+  };
+
+  const fetchEmailHistory = async (page = 1) => {
+    try {
+      const data = await emailsAPI.getHistory(page);
+      setEmailHistory(data.emails || []);
+      setEmailHistoryPage(page);
+    } catch (err) {
+      console.error('Error carregant historial emails:', err);
+    }
+  };
+
+  const loadPrizesForMonth = async (month) => {
+    if (!month) return;
+    setPrizesLoading(true);
+    try {
+      const data = await prizesAPI.getForMonth(month);
+      const filled = Array.from({ length: 10 }, (_, i) => {
+        const found = (data.prizes || []).find(p => p.position === i + 1);
+        return found || { position: i + 1, prizeName: '', sponsorName: '', sponsorLink: '' };
+      });
+      setPrizesData(filled);
+    } catch {
+      setPrizesData(Array.from({ length: 10 }, (_, i) => ({ position: i + 1, prizeName: '', sponsorName: '', sponsorLink: '' })));
+    } finally {
+      setPrizesLoading(false);
+    }
+  };
+
+  // Carregar dades quan canvia el tab actiu
+  useEffect(() => {
+    if (activeTab === 'classificacio') fetchAdminRanking(adminRankingMonth);
+    if (activeTab === 'comunicacions') fetchEmailHistory(1);
+    if (activeTab === 'historial') fetchAdminTransactions(1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'classificacio') fetchAdminRanking(adminRankingMonth);
+  }, [adminRankingMonth]);
+
+  const handleApplyBoost = async (tokenId, isActive) => {
+    setBoostLoading(true);
+    try {
+      if (!isActive) {
+        await adminAPI.setBoost(tokenId, { active: false });
+      } else {
+        const dies = parseFloat(boostTemporalDies);
+        const mult = parseFloat(boostTemporalMult);
+        if (!dies || dies <= 0) { alert('Els dies han de ser un número positiu (ex: 7)'); setBoostLoading(false); return; }
+        if (!mult || mult <= 0) { alert('El multiplicador ha de ser un número positiu (ex: 1.5 o 0.85)'); setBoostLoading(false); return; }
+        await adminAPI.setBoost(tokenId, {
+          active: true,
+          boostHours: dies * 24,
+          boostValue: mult,
+          boostDescription: boostTemporalNotes,
+        });
+      }
+      await fetchAll();
+      setBoostModal(null);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBoostLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FAFAF8' }}>
@@ -301,11 +444,15 @@ export default function AdminPage() {
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
 
         {/* TABS */}
-        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
           {[
             { id: 'dashboard', label: '📊 Dashboard' },
             { id: 'tokens', label: '🪙 Tokens' },
             { id: 'usuaris', label: '👥 Usuaris' },
+            { id: 'historial', label: '📋 Historial' },
+            { id: 'classificacio', label: '🏆 Classificació' },
+            { id: 'premis', label: '🎁 Premis' },
+            { id: 'comunicacions', label: '📧 Comunicacions' },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               background: activeTab === tab.id ? '#0A0A0A' : '#FFFFFF',
@@ -843,14 +990,14 @@ export default function AdminPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* Capçalera columnes tokens */}
               <div style={{
-                display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 200px',
+                display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 0.75fr 0.75fr 200px',
                 gap: '1rem', padding: '0 1.5rem',
               }}>
-                {['Token', 'Preu', 'Supply', 'P0 / k', 'Buffer', 'Holders', 'Accions'].map((col, i) => (
+                {['Token', 'Preu', 'Supply', 'P0 / k', 'Buffer', 'Holders', 'Tipus', 'Boost', 'Accions'].map((col, i) => (
                   <span key={i} style={{
                     fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600',
                     color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase',
-                    textAlign: i === 0 ? 'left' : i === 6 ? 'left' : 'center',
+                    textAlign: i === 0 ? 'left' : i === 8 ? 'left' : 'center',
                   }}>{col}</span>
                 ))}
               </div>
@@ -861,7 +1008,7 @@ export default function AdminPage() {
                   padding: '1.25rem 1.5rem',
                   opacity: token.isActive ? 1 : 0.7,
                 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 200px', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 0.75fr 0.75fr 200px', gap: '1rem', alignItems: 'center' }}>
 
                     {/* Nom */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -912,6 +1059,27 @@ export default function AdminPage() {
                       </div>
                     </div>
 
+                    {/* Tipus */}
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#6B6B60', background: '#F5F5F0', padding: '0.15rem 0.5rem', borderRadius: '20px' }}>
+                        {token.isTemporary ? 'Temporal' : 'Permanent'}
+                      </span>
+                    </div>
+
+                    {/* Boost */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                      {token.boostActive ? (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', fontWeight: '600', color: '#2D6A4F', background: 'rgba(45,106,79,0.1)', padding: '0.1rem 0.4rem', borderRadius: '20px', whiteSpace: 'nowrap' }}>⚡ Temp.</span>
+                      ) : (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', color: '#9B9B90', background: '#F5F5F0', padding: '0.1rem 0.4rem', borderRadius: '20px', whiteSpace: 'nowrap' }}>⚡ —</span>
+                      )}
+                      {(token.seasonalMultiplier || 1) !== 1.0 ? (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', fontWeight: '600', color: (token.seasonalMultiplier || 1) > 1 ? '#7B4F9E' : '#C1121F', background: (token.seasonalMultiplier || 1) > 1 ? 'rgba(123,79,158,0.1)' : 'rgba(193,18,31,0.1)', padding: '0.1rem 0.4rem', borderRadius: '20px', whiteSpace: 'nowrap' }}>📅 x{parseFloat(token.seasonalMultiplier).toFixed(2)}</span>
+                      ) : (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', color: '#9B9B90', background: '#F5F5F0', padding: '0.1rem 0.4rem', borderRadius: '20px', whiteSpace: 'nowrap' }}>📅 —</span>
+                      )}
+                    </div>
+
                     {/* Accions */}
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <button onClick={() => openEditToken(token)} style={{
@@ -942,10 +1110,133 @@ export default function AdminPage() {
                           Consolidar
                         </button>
                       )}
+                      <button onClick={() => {
+                        setBoostModal(token);
+                        setBoostTemporalActive(token.boostActive || false);
+                        setBoostTemporalDies('');
+                        setBoostTemporalMult(token.boostValue ? String(token.boostValue) : '');
+                        setBoostTemporalNotes('');
+                        setBoostSeasonalActive((token.seasonalMultiplier || 1) !== 1.0);
+                        setBoostSeasonalMult(token.seasonalMultiplier ? String(token.seasonalMultiplier) : '');
+                        setBoostSeasonalNotes('');
+                      }} style={{
+                        background: token.boostActive ? 'rgba(201,168,76,0.15)' : 'transparent',
+                        color: '#C9A84C',
+                        padding: '0.35rem 0.75rem',
+                        fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', fontWeight: '500',
+                        border: '1.5px solid #C9A84C', borderRadius: '50px', cursor: 'pointer',
+                      }}>
+                        ⚡ Boost
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Propostes de tokens */}
+            <div style={{ marginTop: '2.5rem', borderTop: '1px solid #E8E8E0', paddingTop: '2rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1.5rem' }}>
+                Propostes de tokens
+              </h3>
+
+              {/* Propostes PENDENTS */}
+              {proposals.pending.length > 0 && (
+                <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '2px solid #C9A84C', marginBottom: '1.5rem' }}>
+                  <div style={{ background: 'rgba(201, 168, 76, 0.1)', padding: '1rem 1.5rem', borderBottom: '1px solid #C9A84C' }}>
+                    <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', fontWeight: '600', color: '#C9A84C', margin: 0 }}>
+                      ⏳ Pendents de revisió ({proposals.pending.length})
+                    </h4>
+                  </div>
+                  <div style={{ padding: '1.5rem' }}>
+                    {proposals.pending.map(prop => (
+                      <div key={prop.id} style={{ border: '1px solid #E8E8E0', borderRadius: '10px', padding: '1.5rem', marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.5rem' }}>
+                          <span style={{ fontSize: '3rem' }}>{prop.emoji}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '0.5rem' }}>
+                              {prop.name} <span style={{ color: '#C9A84C' }}>({prop.ticker})</span>
+                            </div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.95rem', color: '#6B6B60', marginBottom: '1rem', lineHeight: 1.6 }}>
+                              {prop.description}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                              <div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90', marginBottom: '0.25rem' }}>Proposat per</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: '#0A0A0A' }}>{prop.proposer?.name}</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#9B9B90' }}>{prop.proposer?.email}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90', marginBottom: '0.25rem' }}>Data proposta</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: '#0A0A0A' }}>{new Date(prop.createdAt).toLocaleDateString('ca-ES')}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90', marginBottom: '0.25rem' }}>ID Proposta</div>
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: '#0A0A0A' }}>#{prop.id}</div>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                              <button
+                                onClick={() => { setAcceptModal(prop); setAcceptForm({ p0: '', k: '' }); setAcceptError(''); }}
+                                style={{ background: '#2D6A4F', color: '#FAFAF8', padding: '0.75rem 1.5rem', fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', border: '2px solid #2D6A4F', borderRadius: '50px', cursor: 'pointer' }}
+                              >
+                                ✅ Acceptar i crear token
+                              </button>
+                              <button
+                                onClick={async () => { if (confirm(`Segur que vols refusar "${prop.name}"?`)) { try { await adminAPI.rejectProposal(prop.id); await fetchProposals(); } catch (err) { alert(err.message); } } }}
+                                style={{ background: 'transparent', color: '#C1121F', padding: '0.75rem 1.5rem', fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', border: '2px solid #C1121F', borderRadius: '50px', cursor: 'pointer' }}
+                              >
+                                ❌ Refusar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Propostes ACCEPTADES i REFUSADES */}
+              {(proposals.accepted.length > 0 || proposals.rejected.length > 0) && (
+                <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.5rem' }}>
+                  <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', fontWeight: '600', color: '#6B6B60', marginBottom: '1rem' }}>
+                    Historial de propostes
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {proposals.accepted.map(prop => (
+                      <div key={prop.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', border: '1px solid #E8E8E0', borderRadius: '8px', background: 'rgba(45, 106, 79, 0.05)' }}>
+                        <span style={{ fontSize: '2rem' }}>{prop.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', fontWeight: '600', color: '#0A0A0A' }}>{prop.name} ({prop.ticker})</div>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#6B6B60' }}>
+                            Per {prop.proposer?.name || prop.proposer?.email || '—'} · Revisat per {prop.reviewer?.name || '—'}{prop.reviewedAt ? ` el ${new Date(prop.reviewedAt).toLocaleDateString('ca-ES')}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ background: 'rgba(45, 106, 79, 0.1)', color: '#2D6A4F', padding: '0.4rem 1rem', borderRadius: '20px', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600' }}>✅ Acceptada</div>
+                      </div>
+                    ))}
+                    {proposals.rejected.map(prop => (
+                      <div key={prop.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', border: '1px solid #E8E8E0', borderRadius: '8px', background: '#F5F5F0', opacity: 0.7 }}>
+                        <span style={{ fontSize: '2rem', filter: 'grayscale(1)' }}>{prop.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', fontWeight: '600', color: '#6B6B60' }}>{prop.name} ({prop.ticker})</div>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#9B9B90' }}>
+                            Per {prop.proposer?.name || prop.proposer?.email || '—'} · Refusada per {prop.reviewer?.name || '—'}{prop.reviewedAt ? ` el ${new Date(prop.reviewedAt).toLocaleDateString('ca-ES')}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ background: 'rgba(193, 18, 31, 0.1)', color: '#C1121F', padding: '0.4rem 1rem', borderRadius: '20px', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600' }}>❌ Refusada</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {proposals.pending.length === 0 && proposals.accepted.length === 0 && proposals.rejected.length === 0 && (
+                <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '2rem', textAlign: 'center' }}>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '1rem', color: '#9B9B90' }}>No hi ha propostes encara</div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1034,6 +1325,253 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* TAB: HISTORIAL */}
+        {activeTab === 'historial' && (
+          <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'hidden' }}>
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #F5F5F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.4rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>Historial de transaccions</h2>
+            </div>
+            {adminTransactions.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>Sense transaccions</div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 2fr 1fr 1fr', padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0' }}>
+                  {['Data', 'Usuari', 'Token', 'Tipus', 'Import'].map((col, i) => (
+                    <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{col}</span>
+                  ))}
+                </div>
+                {adminTransactions.map((tx, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 2fr 1fr 1fr', padding: '0.875rem 1.5rem', borderBottom: i < adminTransactions.length - 1 ? '1px solid #F5F5F0' : 'none', alignItems: 'center' }}>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: '#9B9B90' }}>{new Date(tx.createdAt).toLocaleDateString('ca-ES')}</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A' }}>{tx.user?.name || tx.user?.email || '—'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>{tx.product?.emoji}</span>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A' }}>{tx.product?.name}</span>
+                    </div>
+                    <div>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', fontWeight: '600', color: tx.type === 'BUY' ? '#2D6A4F' : '#C1121F', background: tx.type === 'BUY' ? 'rgba(45,106,79,0.08)' : 'rgba(193,18,31,0.08)', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                        {tx.type === 'BUY' ? 'Compra' : 'Venda'}
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', color: '#0A0A0A' }}>
+                      {tx.type === 'BUY' ? `${parseFloat(tx.amountEUR || 0).toFixed(2)}€` : `+${parseFloat(tx.eurRecovered || 0).toFixed(2)}€`}
+                    </div>
+                  </div>
+                ))}
+                {adminTxTotal > 20 && (
+                  <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #F5F5F0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+                    <button onClick={() => fetchAdminTransactions(adminTxPage - 1)} disabled={adminTxPage === 1} style={{ padding: '0.4rem 0.8rem', background: adminTxPage === 1 ? '#F5F5F0' : '#FFFFFF', color: adminTxPage === 1 ? '#9B9B90' : '#0A0A0A', border: '1.5px solid #E8E8E0', borderRadius: '8px', cursor: adminTxPage === 1 ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem' }}>Anterior</button>
+                    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#6B6B60' }}>Pàgina {adminTxPage} de {Math.ceil(adminTxTotal / 20)}</span>
+                    <button onClick={() => fetchAdminTransactions(adminTxPage + 1)} disabled={adminTxPage >= Math.ceil(adminTxTotal / 20)} style={{ padding: '0.4rem 0.8rem', background: adminTxPage >= Math.ceil(adminTxTotal / 20) ? '#F5F5F0' : '#FFFFFF', color: adminTxPage >= Math.ceil(adminTxTotal / 20) ? '#9B9B90' : '#0A0A0A', border: '1.5px solid #E8E8E0', borderRadius: '8px', cursor: adminTxPage >= Math.ceil(adminTxTotal / 20) ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem' }}>Següent</button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* TAB: CLASSIFICACIÓ (admin) */}
+        {activeTab === 'classificacio' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setAdminRankingMonth('current')} style={{ background: adminRankingMonth === 'current' ? '#0A0A0A' : '#FFFFFF', color: adminRankingMonth === 'current' ? '#FAFAF8' : '#6B6B60', padding: '0.5rem 1.25rem', fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '500', border: '1.5px solid', borderColor: adminRankingMonth === 'current' ? '#0A0A0A' : '#E8E8E0', borderRadius: '50px', cursor: 'pointer' }}>Mes actual</button>
+              {adminAvailableMonths.map(m => (
+                <button key={m} onClick={() => setAdminRankingMonth(m)} style={{ background: adminRankingMonth === m ? '#0A0A0A' : '#FFFFFF', color: adminRankingMonth === m ? '#FAFAF8' : '#6B6B60', padding: '0.5rem 1.25rem', fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '500', border: '1.5px solid', borderColor: adminRankingMonth === m ? '#0A0A0A' : '#E8E8E0', borderRadius: '50px', cursor: 'pointer', textTransform: 'capitalize' }}>
+                  {new Date(m + '-01').toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' })}
+                </button>
+              ))}
+            </div>
+            {adminRankingLoading ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>Carregant...</div>
+            ) : (
+              <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1fr', padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '600px' }}>
+                  {['#', 'Jugador', 'Tokens', 'Invertit', 'Valor', 'Guany%'].map((col, i) => (
+                    <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i > 1 ? 'right' : 'left', display: 'block' }}>{col}</span>
+                  ))}
+                </div>
+                {adminRankings.length === 0 ? (
+                  <div style={{ padding: '3rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>Sense dades</div>
+                ) : adminRankings.map((entry, i) => (
+                  <div key={entry.userId} style={{ display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1fr', padding: '0.875rem 1.5rem', borderBottom: i < adminRankings.length - 1 ? '1px solid #F5F5F0' : 'none', alignItems: 'center', minWidth: '600px' }}>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>{entry.position <= 3 ? ['🥇','🥈','🥉'][entry.position-1] : `#${entry.position}`}</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{entry.username}</div>
+                    <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end' }}>{(entry.tokensOwned || []).slice(0, 4).map((t, j) => <span key={j} style={{ fontSize: '0.9rem' }}>{t.split(' ')[0]}</span>)}</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.investedValue || 0).toFixed(2)}€</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: '#0A0A0A', textAlign: 'right' }}>{parseFloat(entry.totalValue || 0).toFixed(2)}€</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: (entry.gainPercent || 0) >= 0 ? '#2D6A4F' : '#C1121F', textAlign: 'right' }}>{(entry.gainPercent || 0) >= 0 ? '+' : ''}{parseFloat(entry.gainPercent || 0).toFixed(1)}%</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: PREMIS */}
+        {activeTab === 'premis' && (
+          <div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <label style={labelStyle}>Mes (AAAA-MM)</label>
+                <input type="month" value={prizesMonth} onChange={e => setPrizesMonth(e.target.value)} style={{ ...inputStyle, width: 'auto' }} />
+              </div>
+              <button onClick={() => loadPrizesForMonth(prizesMonth)} disabled={!prizesMonth || prizesLoading} style={{ padding: '0.6rem 1.5rem', background: prizesMonth ? '#C9A84C' : '#E8E8E0', color: prizesMonth ? '#0A0A0A' : '#9B9B90', border: 'none', borderRadius: '8px', cursor: prizesMonth ? 'pointer' : 'not-allowed', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '0.9rem' }}>
+                {prizesLoading ? 'Carregant...' : 'Carregar'}
+              </button>
+              <button
+                disabled={!prizesMonth || prizesLoading}
+                onClick={async () => {
+                  if (!prizesMonth) return;
+                  setPrizesLoading(true);
+                  try {
+                    const emptyPrizes = Array.from({ length: 10 }, (_, i) => ({ position: i + 1, prizeName: '', sponsorName: '', sponsorLink: '' }));
+                    await prizesAPI.setForMonth(prizesMonth, emptyPrizes);
+                    setPrizesData(emptyPrizes);
+                    setEditingPrize(null);
+                  } catch (err) { alert(err.message); }
+                  finally { setPrizesLoading(false); }
+                }}
+                style={{ padding: '0.6rem 1.5rem', background: prizesMonth ? '#0A0A0A' : '#E8E8E0', color: prizesMonth ? '#FAFAF8' : '#9B9B90', border: 'none', borderRadius: '8px', cursor: prizesMonth ? 'pointer' : 'not-allowed', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '0.9rem' }}
+              >
+                + Crear mes nou
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+              {prizesData.map((prize, idx) => (
+                <div key={prize.position} style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: '900', color: prize.position <= 3 ? '#C9A84C' : '#9B9B90' }}>#{prize.position}</span>
+                    {editingPrize !== idx ? (
+                      <button onClick={() => { setEditingPrize(idx); setPrizeEditForm({ prizeName: prize.prizeName || '', sponsorName: prize.sponsorName || '', sponsorLink: prize.sponsorLink || '' }); }} style={{ background: 'transparent', border: '1px solid #E8E8E0', borderRadius: '6px', padding: '0.35rem 0.75rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#6B6B60' }}>
+                        Editar
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button onClick={async () => {
+                          try {
+                            await prizesAPI.update(prizesMonth, prize.position, prizeEditForm);
+                            const updated = [...prizesData];
+                            updated[idx] = { ...prize, ...prizeEditForm };
+                            setPrizesData(updated);
+                            setEditingPrize(null);
+                          } catch (err) { alert(err.message); }
+                        }} style={{ background: '#2D6A4F', color: '#FAFAF8', border: 'none', borderRadius: '6px', padding: '0.35rem 0.75rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem' }}>Guardar</button>
+                        <button onClick={() => setEditingPrize(null)} style={{ background: 'transparent', border: '1px solid #E8E8E0', borderRadius: '6px', padding: '0.35rem 0.75rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#6B6B60' }}>Cancel·lar</button>
+                      </div>
+                    )}
+                  </div>
+                  {editingPrize === idx ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <input value={prizeEditForm.prizeName} onChange={e => setPrizeEditForm({ ...prizeEditForm, prizeName: e.target.value })} placeholder="Nom del premi" style={inputStyle} />
+                      <input value={prizeEditForm.sponsorName} onChange={e => setPrizeEditForm({ ...prizeEditForm, sponsorName: e.target.value })} placeholder="Nom del patrocinador" style={inputStyle} />
+                      <input value={prizeEditForm.sponsorLink} onChange={e => setPrizeEditForm({ ...prizeEditForm, sponsorLink: e.target.value })} placeholder="https://..." style={inputStyle} />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: prize.prizeName ? '#0A0A0A' : '#D0D0C8' }}>{prize.prizeName || '— Sense premi —'}</div>
+                      {prize.sponsorName && <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: '#C9A84C' }}>{prize.sponsorName}</div>}
+                      {prize.sponsorLink && <a href={prize.sponsorLink} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: '#9B9B90', textDecoration: 'none' }}>{prize.sponsorLink}</a>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB: COMUNICACIONS */}
+        {activeTab === 'comunicacions' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.5rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>Comunicacions</h2>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              {/* Card: Guanyadors */}
+              <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.5rem' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '700', color: '#0A0A0A', marginBottom: '0.75rem' }}>🏆 Emails guanyadors</h4>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={labelStyle}>Mes (AAAA-MM)</label>
+                  <input type="month" value={winnersMonth} onChange={e => setWinnersMonth(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+                </div>
+                <button disabled={!winnersMonth || emailSending === 'winners'} onClick={async () => {
+                  setEmailSending('winners'); setEmailMsg({});
+                  try { const r = await emailsAPI.sendWinners(winnersMonth); setEmailMsg({ winners: `✅ ${r.count || 0} emails enviats` }); fetchEmailHistory(1); }
+                  catch (err) { setEmailMsg({ winners: `❌ ${err.message}` }); }
+                  finally { setEmailSending(''); }
+                }} style={{ width: '100%', background: winnersMonth ? '#C9A84C' : '#E8E8E0', color: winnersMonth ? '#0A0A0A' : '#9B9B90', border: 'none', borderRadius: '8px', padding: '0.75rem', cursor: winnersMonth ? 'pointer' : 'not-allowed', fontFamily: "'DM Sans', sans-serif", fontWeight: '600' }}>
+                  {emailSending === 'winners' ? 'Enviant...' : 'Enviar emails guanyadors'}
+                </button>
+                {emailMsg.winners && <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', marginTop: '0.5rem', color: emailMsg.winners.startsWith('✅') ? '#2D6A4F' : '#C1121F' }}>{emailMsg.winners}</p>}
+              </div>
+
+              {/* Card: Setmanal */}
+              <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.5rem' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '700', color: '#0A0A0A', marginBottom: '0.75rem' }}>📊 Email setmanal</h4>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#6B6B60', marginBottom: '0.75rem', lineHeight: 1.5 }}>Envia l&apos;email de resum setmanal a tots els usuaris actius.</p>
+                <button disabled={emailSending === 'weekly'} onClick={async () => {
+                  setEmailSending('weekly'); setEmailMsg({});
+                  try { const r = await emailsAPI.sendWeekly(); setEmailMsg({ weekly: `✅ ${r.count || 0} emails enviats` }); fetchEmailHistory(1); }
+                  catch (err) { setEmailMsg({ weekly: `❌ ${err.message}` }); }
+                  finally { setEmailSending(''); }
+                }} style={{ width: '100%', background: '#C9A84C', color: '#0A0A0A', border: 'none', borderRadius: '8px', padding: '0.75rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600' }}>
+                  {emailSending === 'weekly' ? 'Enviant...' : 'Enviar email setmanal'}
+                </button>
+                {emailMsg.weekly && <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', marginTop: '0.5rem', color: emailMsg.weekly.startsWith('✅') ? '#2D6A4F' : '#C1121F' }}>{emailMsg.weekly}</p>}
+              </div>
+
+              {/* Card: Personalitzat */}
+              <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', padding: '1.5rem' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: '700', color: '#0A0A0A', marginBottom: '0.75rem' }}>✉️ Email personalitzat</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <textarea value={customRecipients} onChange={e => setCustomRecipients(e.target.value)} placeholder="un@email.com&#10;altre@email.com" rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                  <input value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="Assumpte" style={inputStyle} />
+                  <textarea value={customBody} onChange={e => setCustomBody(e.target.value)} placeholder="Cos del missatge..." rows={4} style={{ ...inputStyle, resize: 'vertical' }} />
+                </div>
+                <button disabled={!customRecipients || !customSubject || !customBody || emailSending === 'custom'} onClick={async () => {
+                  const recipients = customRecipients.split('\n').map(s => s.trim()).filter(Boolean);
+                  setEmailSending('custom'); setEmailMsg({});
+                  try { const r = await emailsAPI.sendCustom(recipients, customSubject, customBody); setEmailMsg({ custom: `✅ ${r.count || 0} emails enviats` }); fetchEmailHistory(1); }
+                  catch (err) { setEmailMsg({ custom: `❌ ${err.message}` }); }
+                  finally { setEmailSending(''); }
+                }} style={{ width: '100%', background: customRecipients && customSubject && customBody ? '#C9A84C' : '#E8E8E0', color: customRecipients && customSubject && customBody ? '#0A0A0A' : '#9B9B90', border: 'none', borderRadius: '8px', padding: '0.75rem', cursor: customRecipients && customSubject && customBody ? 'pointer' : 'not-allowed', fontFamily: "'DM Sans', sans-serif", fontWeight: '600' }}>
+                  {emailSending === 'custom' ? 'Enviant...' : 'Enviar'}
+                </button>
+                {emailMsg.custom && <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', marginTop: '0.5rem', color: emailMsg.custom.startsWith('✅') ? '#2D6A4F' : '#C1121F' }}>{emailMsg.custom}</p>}
+              </div>
+            </div>
+
+            {/* Historial enviaments */}
+            <div>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1rem' }}>Historial d&apos;enviaments</h3>
+              <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'hidden' }}>
+                {emailHistory.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#9B9B90', fontFamily: "'DM Sans', sans-serif" }}>Sense enviaments</div>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 2fr 100px', padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0' }}>
+                      {['Data', 'Tipus', '#', 'Assumpte', ''].map((col, i) => (
+                        <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{col}</span>
+                      ))}
+                    </div>
+                    {emailHistory.map((email, i) => (
+                      <div key={email.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 2fr 100px', padding: '0.875rem 1.5rem', borderBottom: i < emailHistory.length - 1 ? '1px solid #F5F5F0' : 'none', alignItems: 'center' }}>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: '#9B9B90' }}>{new Date(email.sentAt).toLocaleDateString('ca-ES')}</div>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A' }}>{email.emailType}</div>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#6B6B60' }}>{email.recipientsCount}</div>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', color: '#0A0A0A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.subject}</div>
+                        <div>
+                          <button onClick={() => setEmailViewModal(email)} style={{ background: 'transparent', border: '1px solid #E8E8E0', borderRadius: '6px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: '#6B6B60' }}>Veure</button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* MODAL CREAR/EDITAR TOKEN */}
@@ -1099,6 +1637,37 @@ export default function AdminPage() {
                   <input type="number" step="0.00001" min="0.00001" value={tokenForm.k} onChange={e => setTokenForm({ ...tokenForm, k: e.target.value })} placeholder="0.0001" style={inputStyle} onFocus={e => e.target.style.borderColor = '#C9A84C'} onBlur={e => e.target.style.borderColor = '#E8E8E0'} />
                   <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', color: '#9B9B90', marginTop: '0.35rem' }}>Com de rapid puja el preu</p>
                 </div>
+              </div>
+
+              {/* Tipus de token */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F8F8F4', borderRadius: '10px', padding: '0.875rem 1rem', border: '1px solid #E8E8E0' }}>
+                <div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600', color: '#0A0A0A' }}>
+                    {tokenForm.isTemporary ? '⏳ Token Temporal' : '♾️ Token Permanent'}
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', color: '#9B9B90', marginTop: '0.15rem' }}>
+                    {tokenForm.isTemporary
+                      ? 'Té data de caducitat — es pot retirar del mercat'
+                      : 'Sempre disponible al mercat sense data de fi'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTokenForm({ ...tokenForm, isTemporary: !tokenForm.isTemporary })}
+                  style={{
+                    width: '48px', height: '26px', borderRadius: '13px', flexShrink: 0,
+                    background: tokenForm.isTemporary ? '#C9A84C' : '#D0D0C8',
+                    border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: '3px',
+                    left: tokenForm.isTemporary ? '24px' : '3px',
+                    width: '20px', height: '20px', borderRadius: '50%',
+                    background: '#FFFFFF', transition: 'left 0.2s', display: 'block',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }} />
+                </button>
               </div>
 
               {/* Preview preu */}
@@ -1210,266 +1779,6 @@ export default function AdminPage() {
         </div>
       )}
     
-
-        {/* SECCIÓ: PROPOSTES TOKENS */}
-        <div style={{ marginTop: '2rem' }}>
-          <h2 style={{
-            fontFamily: "'Playfair Display', serif", fontSize: '1.8rem',
-            fontWeight: '700', color: '#0A0A0A', marginBottom: '1.5rem',
-          }}>
-            Propostes de tokens
-          </h2>
-
-          {/* Propostes PENDENTS */}
-          {proposals.pending.length > 0 && (
-            <div style={{
-              background: '#FFFFFF', borderRadius: '12px',
-              border: '2px solid #C9A84C', marginBottom: '2rem',
-            }}>
-              <div style={{
-                background: 'rgba(201, 168, 76, 0.1)',
-                padding: '1rem 1.5rem',
-                borderBottom: '1px solid #C9A84C',
-              }}>
-                <h3 style={{
-                  fontFamily: "'DM Sans', sans-serif", fontSize: '1.1rem',
-                  fontWeight: '600', color: '#C9A84C', margin: 0,
-                }}>
-                  ⏳ Pendents de revisió ({proposals.pending.length})
-                </h3>
-              </div>
-
-              <div style={{ padding: '1.5rem' }}>
-                {proposals.pending.map(prop => (
-                  <div key={prop.id} style={{
-                    border: '1px solid #E8E8E0', borderRadius: '10px',
-                    padding: '1.5rem', marginBottom: '1rem',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.5rem' }}>
-                      {/* Emoji */}
-                      <span style={{ fontSize: '3rem' }}>{prop.emoji}</span>
-
-                      {/* Info */}
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontFamily: "'Playfair Display', serif", fontSize: '1.5rem',
-                          fontWeight: '700', color: '#0A0A0A', marginBottom: '0.5rem',
-                        }}>
-                          {prop.name} <span style={{ color: '#C9A84C' }}>({prop.ticker})</span>
-                        </div>
-
-                        <div style={{
-                          fontFamily: "'DM Sans', sans-serif", fontSize: '0.95rem',
-                          color: '#6B6B60', marginBottom: '1rem', lineHeight: 1.6,
-                        }}>
-                          {prop.description}
-                        </div>
-
-                        <div style={{
-                          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem',
-                          marginBottom: '1rem',
-                        }}>
-                          <div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem',
-                              color: '#9B9B90', marginBottom: '0.25rem',
-                            }}>
-                              Proposat per
-                            </div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem',
-                              fontWeight: '600', color: '#0A0A0A',
-                            }}>
-                              {prop.user.name}
-                            </div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem',
-                              color: '#9B9B90',
-                            }}>
-                              {prop.user.email}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem',
-                              color: '#9B9B90', marginBottom: '0.25rem',
-                            }}>
-                              Data proposta
-                            </div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem',
-                              fontWeight: '600', color: '#0A0A0A',
-                            }}>
-                              {new Date(prop.createdAt).toLocaleDateString('ca-ES')}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem',
-                              color: '#9B9B90', marginBottom: '0.25rem',
-                            }}>
-                              ID Proposta
-                            </div>
-                            <div style={{
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem',
-                              fontWeight: '600', color: '#0A0A0A',
-                            }}>
-                              #{prop.id}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Accions */}
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                          <button
-                            onClick={() => {
-                              setAcceptModal(prop);
-                              setAcceptForm({ p0: '', k: '' });
-                              setAcceptError('');
-                            }}
-                            style={{
-                              background: '#2D6A4F', color: '#FAFAF8',
-                              padding: '0.75rem 1.5rem',
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600',
-                              border: '2px solid #2D6A4F', borderRadius: '50px',
-                              cursor: 'pointer', transition: 'all 0.2s',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#1F4A37'; e.currentTarget.style.borderColor = '#1F4A37'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = '#2D6A4F'; e.currentTarget.style.borderColor = '#2D6A4F'; }}
-                          >
-                            ✅ Acceptar i crear token
-                          </button>
-
-                          <button
-                            onClick={async () => {
-                              if (confirm(`Segur que vols refusar "${prop.name}"?`)) {
-                                try {
-                                  await adminAPI.rejectProposal(prop.id);
-                                  await fetchProposals();
-                                } catch (err) {
-                                  alert(err.message);
-                                }
-                              }
-                            }}
-                            style={{
-                              background: 'transparent', color: '#C1121F',
-                              padding: '0.75rem 1.5rem',
-                              fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600',
-                              border: '2px solid #C1121F', borderRadius: '50px',
-                              cursor: 'pointer', transition: 'all 0.2s',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#C1121F'; e.currentTarget.style.color = '#FAFAF8'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#C1121F'; }}
-                          >
-                            ❌ Refusar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Propostes ACCEPTADES i REFUSADES */}
-          {(proposals.accepted.length > 0 || proposals.rejected.length > 0) && (
-            <div style={{
-              background: '#FFFFFF', borderRadius: '12px',
-              border: '1px solid #E8E8E0', padding: '1.5rem',
-            }}>
-              <h3 style={{
-                fontFamily: "'DM Sans', sans-serif", fontSize: '1.1rem',
-                fontWeight: '600', color: '#6B6B60', marginBottom: '1rem',
-              }}>
-                Historial de propostes
-              </h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {/* Acceptades */}
-                {proposals.accepted.map(prop => (
-                  <div key={prop.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '1rem',
-                    padding: '1rem', border: '1px solid #E8E8E0', borderRadius: '8px',
-                    background: 'rgba(45, 106, 79, 0.05)',
-                  }}>
-                    <span style={{ fontSize: '2rem' }}>{prop.emoji}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        fontFamily: "'DM Sans', sans-serif", fontSize: '1rem',
-                        fontWeight: '600', color: '#0A0A0A',
-                      }}>
-                        {prop.name} ({prop.ticker})
-                      </div>
-                      <div style={{
-                        fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem',
-                        color: '#6B6B60',
-                      }}>
-                        Per {prop.user.name} · Revisat per {prop.reviewer?.name} el {new Date(prop.reviewedAt).toLocaleDateString('ca-ES')}
-                      </div>
-                    </div>
-                    <div style={{
-                      background: 'rgba(45, 106, 79, 0.1)', color: '#2D6A4F',
-                      padding: '0.4rem 1rem', borderRadius: '20px',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600',
-                    }}>
-                      ✅ Acceptada
-                    </div>
-                  </div>
-                ))}
-
-                {/* Refusades (en gris) */}
-                {proposals.rejected.map(prop => (
-                  <div key={prop.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '1rem',
-                    padding: '1rem', border: '1px solid #E8E8E0', borderRadius: '8px',
-                    background: '#F5F5F0', opacity: 0.7,
-                  }}>
-                    <span style={{ fontSize: '2rem', filter: 'grayscale(1)' }}>{prop.emoji}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        fontFamily: "'DM Sans', sans-serif", fontSize: '1rem',
-                        fontWeight: '600', color: '#6B6B60',
-                      }}>
-                        {prop.name} ({prop.ticker})
-                      </div>
-                      <div style={{
-                        fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem',
-                        color: '#9B9B90',
-                      }}>
-                        Per {prop.user.name} · Refusada per {prop.reviewer?.name} el {new Date(prop.reviewedAt).toLocaleDateString('ca-ES')}
-                      </div>
-                    </div>
-                    <div style={{
-                      background: 'rgba(193, 18, 31, 0.1)', color: '#C1121F',
-                      padding: '0.4rem 1rem', borderRadius: '20px',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: '0.85rem', fontWeight: '600',
-                    }}>
-                      ❌ Refusada
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {proposals.pending.length === 0 && proposals.accepted.length === 0 && proposals.rejected.length === 0 && (
-            <div style={{
-              background: '#FFFFFF', borderRadius: '12px',
-              border: '1px solid #E8E8E0', padding: '3rem',
-              textAlign: 'center',
-            }}>
-              <div style={{
-                fontFamily: "'DM Sans', sans-serif", fontSize: '1rem',
-                color: '#9B9B90',
-              }}>
-                No hi ha propostes encara
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* MODAL: Acceptar proposta */}
         {acceptModal && (
@@ -1607,6 +1916,202 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+      {/* MODAL: Veure email */}
+      {emailViewModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+        }}
+          onClick={e => { if (e.target === e.currentTarget) setEmailViewModal(null); }}
+        >
+          <div style={{
+            background: '#FFFFFF', borderRadius: '20px', padding: '2rem',
+            width: '100%', maxWidth: '600px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.2)',
+            maxHeight: '85vh', overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>
+                Detall de l&apos;enviament
+              </h3>
+              <button onClick={() => setEmailViewModal(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: '#6B6B60', padding: '0.25rem' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '0.1rem' }}>Data</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{new Date(emailViewModal.sentAt).toLocaleString('ca-ES')}</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '0.1rem' }}>Tipus</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{emailViewModal.emailType}</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '0.1rem' }}>Destinataris</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{emailViewModal.recipientsCount} usuaris</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '0.1rem' }}>Assumpte</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', color: '#0A0A0A' }}>{emailViewModal.subject}</span>
+              </div>
+              {emailViewModal.body && (
+                <div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.75rem', fontWeight: '600', color: '#9B9B90', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Cos del missatge</div>
+                  <div style={{ background: '#F8F8F4', borderRadius: '8px', border: '1px solid #E8E8E0', padding: '1rem', fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', color: '#3A3A32', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                    {emailViewModal.body}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Control de Boosts */}
+      {boostModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+        }}
+          onClick={e => { if (e.target === e.currentTarget) setBoostModal(null); }}
+        >
+          <div style={{
+            background: '#FFFFFF', borderRadius: '20px', padding: '2rem',
+            width: '100%', maxWidth: '480px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.2)',
+            maxHeight: '90vh', overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>
+                {boostModal.emoji} {boostModal.name} — Boosts
+              </h3>
+              <button onClick={() => setBoostModal(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: '#6B6B60', padding: '0.25rem' }}>✕</button>
+            </div>
+
+            {/* Boost Temporal */}
+            <div style={{ background: '#F8F8F4', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem', border: '1px solid #E8E8E0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.95rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>⚡ Boost Temporal</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#6B6B60' }}>{boostTemporalActive ? 'Actiu' : 'Inactiu'}</span>
+                  <button onClick={() => setBoostTemporalActive(!boostTemporalActive)} style={{
+                    width: '44px', height: '24px', borderRadius: '12px',
+                    background: boostTemporalActive ? '#C9A84C' : '#D0D0C8',
+                    border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                  }}>
+                    <span style={{
+                      position: 'absolute', top: '3px', left: boostTemporalActive ? '22px' : '3px',
+                      width: '18px', height: '18px', borderRadius: '50%',
+                      background: '#FFFFFF', transition: 'left 0.2s', display: 'block',
+                    }} />
+                  </button>
+                </div>
+              </div>
+              {boostModal.boostExpiresAt && (
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#C9A84C', margin: '0 0 0.75rem' }}>
+                  Expira: {new Date(boostModal.boostExpiresAt).toLocaleDateString('ca-ES')}
+                </p>
+              )}
+              {boostTemporalActive && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label style={labelStyle}>Dies</label>
+                      <input type="number" min="0.1" step="0.5" value={boostTemporalDies} onChange={e => setBoostTemporalDies(e.target.value)} placeholder="7" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Multiplicador</label>
+                      <input type="number" min="0.01" step="0.05" value={boostTemporalMult} onChange={e => setBoostTemporalMult(e.target.value)} placeholder="1.5" style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Notes (opcional)</label>
+                    <input value={boostTemporalNotes} onChange={e => setBoostTemporalNotes(e.target.value)} placeholder="Motiu del boost..." style={inputStyle} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {boostTemporalActive && (
+                  <button
+                    onClick={() => handleApplyBoost(boostModal.id, true)}
+                    disabled={boostLoading || !boostTemporalDies || !boostTemporalMult}
+                    style={{
+                      flex: 1, background: boostLoading || !boostTemporalDies || !boostTemporalMult ? '#E8E8E0' : '#C9A84C',
+                      color: boostLoading || !boostTemporalDies || !boostTemporalMult ? '#9B9B90' : '#0A0A0A',
+                      border: 'none', borderRadius: '8px', padding: '0.6rem 1rem',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '600',
+                      cursor: boostLoading || !boostTemporalDies || !boostTemporalMult ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {boostLoading ? 'Aplicant...' : 'Aplicar boost'}
+                  </button>
+                )}
+                {boostModal.boostActive && (
+                  <button
+                    onClick={() => handleApplyBoost(boostModal.id, false)}
+                    disabled={boostLoading}
+                    style={{
+                      flex: 1, background: 'rgba(193,18,31,0.08)', color: '#C1121F',
+                      border: '1.5px solid #C1121F', borderRadius: '8px', padding: '0.6rem 1rem',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '600',
+                      cursor: boostLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Desactivar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Boost Estacional */}
+            <div style={{ background: '#F8F8F4', borderRadius: '12px', padding: '1.25rem', border: '1px solid #E8E8E0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.95rem', fontWeight: '700', color: '#0A0A0A', margin: 0 }}>📅 Boost Estacional</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', color: '#6B6B60' }}>{boostSeasonalActive ? 'Actiu' : 'Inactiu'}</span>
+                  <button onClick={() => setBoostSeasonalActive(!boostSeasonalActive)} style={{
+                    width: '44px', height: '24px', borderRadius: '12px',
+                    background: boostSeasonalActive ? '#C9A84C' : '#D0D0C8',
+                    border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                  }}>
+                    <span style={{
+                      position: 'absolute', top: '3px', left: boostSeasonalActive ? '22px' : '3px',
+                      width: '18px', height: '18px', borderRadius: '50%',
+                      background: '#FFFFFF', transition: 'left 0.2s', display: 'block',
+                    }} />
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Multiplicador</label>
+                  <input type="number" min="0.01" step="0.05" value={boostSeasonalMult} onChange={e => setBoostSeasonalMult(e.target.value)} placeholder="1.5" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Notes (opcional)</label>
+                  <input value={boostSeasonalNotes} onChange={e => setBoostSeasonalNotes(e.target.value)} placeholder="Temporada de Nadal..." style={inputStyle} />
+                </div>
+              </div>
+              <button onClick={async () => {
+                const mult = boostSeasonalActive ? parseFloat(boostSeasonalMult) : 1.0;
+                if (boostSeasonalActive && (!mult || mult <= 0)) { alert('El multiplicador ha de ser un número positiu (ex: 1.5 o 0.85)'); return; }
+                setBoostLoading(true);
+                try {
+                  await adminAPI.setSeasonalBoost(boostModal.id, mult, boostSeasonalNotes);
+                  await fetchAll();
+                  setBoostModal(null);
+                } catch (err) { alert(err.message); }
+                finally { setBoostLoading(false); }
+              }} disabled={boostLoading} style={{
+                width: '100%', background: boostLoading ? '#E8E8E0' : '#0A0A0A',
+                color: boostLoading ? '#9B9B90' : '#FAFAF8',
+                border: 'none', borderRadius: '8px', padding: '0.6rem 1rem',
+                fontFamily: "'DM Sans', sans-serif", fontSize: '0.88rem', fontWeight: '600',
+                cursor: boostLoading ? 'not-allowed' : 'pointer',
+              }}>
+                {boostLoading ? 'Guardant...' : 'Guardar boost estacional'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -151,7 +151,7 @@ export default function Hero() {
             transition: 'all 0.8s ease 0.2s',
           }}>
             <Image
-              src="/iphone-chart.png"
+              src="/chart-new-hero-v2.png"
               alt="Centims app"
               fill
               style={{ objectFit: 'contain', objectPosition: 'center' }}

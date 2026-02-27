@@ -104,7 +104,7 @@ export default function Market() {
       `}</style>
 
     <section id="mercat" style={{
-      padding: '5rem 0',
+      padding: '3rem 0',
       background: '#FAFAF8',
       borderTop: '1px solid #F0F0E8',
     }}>
@@ -122,16 +122,16 @@ export default function Market() {
             El Mercat
           </h2>
 
-          {/* Avis legal */}
+          {/* Avis simulador */}
           <p style={{
             fontFamily: "'DM Sans', sans-serif",
             fontSize: '0.82rem', color: '#9B9B90',
-            lineHeight: 1.6, maxWidth: '800px',
+            lineHeight: 1.6,
             padding: '0.75rem 1rem',
             borderLeft: '3px solid #C9A84C',
             background: 'rgba(201, 168, 76, 0.05)',
           }}>
-            La inversio en tokens digitals comporta un risc elevat i no es adequada per a tots els perfils. Centims no garanteix rendiments ni assumeix responsabilitat per possibles perdues. Utilitza la plataforma amb finalitats ludiques i formatives.
+            🎮 Centims és un simulador de mercat amb saldo virtual. Cap operació implica diners reals. Aprèn com funcionen els mercats, practica estratègies i competes per premis sense cap risc econòmic.
           </p>
         </div>
 
@@ -207,6 +207,7 @@ export default function Market() {
                   transition: 'background 0.15s ease',
                   cursor: 'pointer',
                 }}
+                onClick={() => router.push(`/token/${token.id}`)}
                 onMouseEnter={e => { e.currentTarget.style.background = '#FAFAF8'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
@@ -248,7 +249,7 @@ export default function Market() {
 
                 {/* Accions */}
                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                  <button className="market-btn-detalls" onClick={() => router.push(`/token/${token.id}`)} style={{
+                  <button className="market-btn-detalls" onClick={e => { e.stopPropagation(); router.push(`/token/${token.id}`); }} style={{
                     background: 'transparent', color: '#0A0A0A',
                     padding: '0.4rem 0.875rem',
                     fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', fontWeight: '500',
@@ -260,7 +261,7 @@ export default function Market() {
                   >
                     Detalls
                   </button>
-                  <button onClick={() => user ? router.push(`/token/${token.id}`) : router.push('/register')} style={{
+                  <button onClick={e => { e.stopPropagation(); user ? router.push(`/token/${token.id}`) : router.push('/register'); }} style={{
                     background: '#0A0A0A', color: '#FAFAF8',
                     padding: '0.4rem 0.875rem',
                     fontFamily: "'DM Sans', sans-serif", fontSize: '0.8rem', fontWeight: '500',
