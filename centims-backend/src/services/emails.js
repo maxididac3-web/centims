@@ -4,7 +4,7 @@
 const { Resend } = require('resend');
 const { formatMonth } = require('../utils/helpers');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = global.prisma || new PrismaClient();

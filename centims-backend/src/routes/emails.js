@@ -9,7 +9,7 @@ const { sendWinnersEmails } = require('../services/emails');
 const { sendWeeklyRankingEmails, calculateCurrentRankings } = require('../services/weeklyemails');
 const { Resend } = require('resend');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = global.prisma || new PrismaClient();
