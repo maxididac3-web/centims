@@ -5,7 +5,7 @@ const { getCurrentMonth, getPreviousMonth } = require('../utils/helpers');
 const { snapshotMonthlyRanking } = require('./snapshot');
 const { calculateMonthlyAchievements } = require('./achievements');
 const { liquidateAllPortfolios } = require('./liquidation');
-const { manageSeasonalTokens } = require('./tokenManagement');
+const { manageSeasonalTokens } = require('./tokenmanagement');
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = global.prisma || new PrismaClient();

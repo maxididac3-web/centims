@@ -2,7 +2,7 @@
 // Configuració de tots els cron jobs del sistema
 
 const cron = require('node-cron');
-const { executeMonthlyReset, executeMonthlySnapshot } = require('./monthlyReset');
+const { executeMonthlyReset, executeMonthlySnapshot } = require('./monthlyreset');
 const { sendWeeklyRankingEmails } = require('./weeklyemails');
 
 const { PrismaClient } = require('@prisma/client');
