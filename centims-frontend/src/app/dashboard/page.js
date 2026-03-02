@@ -290,6 +290,36 @@ export default function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F5F5F0' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .dash-main-pad { padding: 1rem !important; }
+          .dash-stats-grid { grid-template-columns: 1fr !important; gap: 0.5rem !important; }
+          .dash-tabs-grid {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 0.5rem !important;
+          }
+          .dash-tab-btn {
+            border-radius: 10px !important;
+            padding: 0.75rem 0.5rem !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            text-align: center !important;
+          }
+          .table-scroll-inner {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          .sticky-c1 { position: sticky; left: 0; z-index: 3; }
+          .sticky-c1-head { background: #F8F8F4; }
+          .sticky-c1-row  { background: #FFFFFF; }
+          .sticky-c1-me   { background: rgba(201,168,76,0.12); }
+          .sticky-c2 { position: sticky; left: 50px; z-index: 3; }
+          .sticky-c2-head { background: #F8F8F4; }
+          .sticky-c2-row  { background: #FFFFFF; }
+          .sticky-c2-me   { background: rgba(201,168,76,0.12); }
+        }
+      `}</style>
 
       {/* NAVBAR */}
       <nav style={{
@@ -329,10 +359,10 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }} className="dash-main-pad">
 
         {/* RESUM */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '2rem' }} className="dash-stats-grid">
           {[
             { label: 'Saldo disponible', value: `${parseFloat(balance).toFixed(2)}€`, icon: '💶', color: '#0A0A0A', tooltip: null },
             { label: 'Valor spot', value: `${parseFloat(totalValue).toFixed(2)}€`, icon: '📊', color: '#0A0A0A', tooltip: 'Fraccions × preu actual. Estimació si el mercat no mogués.' },
@@ -362,7 +392,7 @@ export default function DashboardPage() {
         </div>
 
         {/* TABS */}
-        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }} className="dash-tabs-grid">
           {[
             { id: 'cartera', label: 'La meva cartera' },
             { id: 'mercat', label: 'Mercat' },
@@ -371,7 +401,7 @@ export default function DashboardPage() {
             { id: 'crea', label: 'Crea el teu token' },
             { id: 'historial', label: 'Historial' }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="dash-tab-btn" style={{
               background: activeTab === tab.id ? '#0A0A0A' : 'transparent',
               color: activeTab === tab.id ? '#FAFAF8' : '#6B6B60',
               padding: '0.6rem 1.5rem',
@@ -384,7 +414,7 @@ export default function DashboardPage() {
 
         {/* TAB: CARTERA */}
         {activeTab === 'cartera' && (
-          <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'visible' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0' }}>
             {!portfolio || portfolio.length === 0 ? (
               <div style={{ padding: '4rem', textAlign: 'center' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🪙</div>
@@ -394,7 +424,7 @@ export default function DashboardPage() {
                 </button>
               </div>
             ) : (
-              <>
+              <div className="table-scroll-inner">
                 {/* Capçalera */}
                 <div style={{
                   display: 'grid',
@@ -403,7 +433,7 @@ export default function DashboardPage() {
                   background: '#F8F8F4', borderBottom: '1px solid #E8E8E0',
                   minWidth: '900px',
                 }}>
-                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'left' }}>Token</span>
+                  <span className="sticky-c1 sticky-c1-head" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'left' }}>Token</span>
                   {['Fraccions', 'Preu origen', 'Preu actual'].map((col, i) => (
                     <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'center', display: 'block' }}>{col}</span>
                   ))}
@@ -437,7 +467,7 @@ export default function DashboardPage() {
                       minWidth: '900px',
                     }}>
                       {/* Token */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div className="sticky-c1 sticky-c1-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <span style={{ fontSize: '1.3rem' }}>{pos.productEmoji}</span>
                         <div>
                           <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: '#0A0A0A' }}>{pos.productName}</div>
@@ -502,32 +532,35 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
-              </>
+              </div>
             )}
           </div>
         )}
 
         {/* TAB: MERCAT */}
         {activeTab === 'mercat' && (
-          <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'hidden' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0' }}>
+            <div className="table-scroll-inner">
             <div style={{
-              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 150px 180px',
+              display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 130px 160px',
               padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0',
+              minWidth: '600px',
             }}>
               {['Token', 'Preu', 'Variació 24h', 'Gràf. 7 dies', 'Accions'].map((col, i) => (
-                <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i === 0 ? 'left' : 'center' }}>{col}</span>
+                <span key={i} className={i === 0 ? 'sticky-c1 sticky-c1-head' : ''} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i === 0 ? 'left' : 'center' }}>{col}</span>
               ))}
             </div>
             {products.map((product, i) => {
               const up = parseFloat(product.changePercent24h) >= 0;
               return (
                 <div key={i} style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 150px 180px',
+                  display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 130px 160px',
                   padding: '1rem 1.5rem',
                   borderBottom: i < products.length - 1 ? '1px solid #F5F5F0' : 'none',
                   alignItems: 'center',
+                  minWidth: '600px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div className="sticky-c1 sticky-c1-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontSize: '1.3rem' }}>{product.emoji}</span>
                     <div>
                       <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: '600', color: '#0A0A0A' }}>{product.name}</div>
@@ -579,6 +612,7 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
@@ -963,13 +997,14 @@ export default function DashboardPage() {
                 {rankingMonth === 'current' ? (
                   <>
                     {/* MES ACTUAL — Taula classificació completa */}
-                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0' }}>
+                      <div className="table-scroll-inner">
                       <div style={{
                         display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1fr 1fr',
                         padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '700px',
                       }}>
                         {['#', 'Jugador', 'Tokens', 'Saldo', 'Invertit', 'Valor', 'Guany%'].map((col, i) => (
-                          <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i > 1 ? 'right' : 'left', display: 'block' }}>{col}</span>
+                          <span key={i} className={i === 0 ? 'sticky-c1 sticky-c1-head' : i === 1 ? 'sticky-c2 sticky-c2-head' : ''} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i > 1 ? 'right' : 'left', display: 'block' }}>{col}</span>
                         ))}
                       </div>
                       {rankings.length === 0 ? (
@@ -984,10 +1019,10 @@ export default function DashboardPage() {
                             padding: '0.875rem 1.5rem', borderBottom: i < rankings.length - 1 ? '1px solid #F5F5F0' : 'none',
                             alignItems: 'center', background: isMe ? 'rgba(201,168,76,0.12)' : 'transparent', minWidth: '700px',
                           }}>
-                            <div style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
+                            <div className={`sticky-c1 ${isMe ? 'sticky-c1-me' : 'sticky-c1-row'}`} style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
                               {entry.position <= 3 ? ['🥇','🥈','🥉'][entry.position-1] : `#${entry.position}`}
                             </div>
-                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
+                            <div className={`sticky-c2 ${isMe ? 'sticky-c2-me' : 'sticky-c2-row'}`} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
                               {entry.username}{isMe && <span style={{ color: '#C9A84C', marginLeft: '0.35rem', fontSize: '0.75rem' }}>← tu</span>}
                             </div>
                             <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end' }}>
@@ -1002,6 +1037,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })}
+                      </div>
                     </div>
 
                     {/* Assoliments */}
@@ -1025,7 +1061,8 @@ export default function DashboardPage() {
                     {/* Premis del mes actual */}
                     <div>
                       <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: '700', color: '#0A0A0A', marginBottom: '1rem' }}>Premis del mes</h3>
-                      <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                      <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0' }}>
+                        <div className="table-scroll-inner">
                         <div style={{ display: 'grid', gridTemplateColumns: '50px 1.5fr 1.5fr 1fr', padding: '0.6rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '500px' }}>
                           {['#', 'Nom del Premi', 'Nom del Patrocinador', 'Enllaç'].map((col, i) => (
                             <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.7rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{col}</span>
@@ -1042,19 +1079,21 @@ export default function DashboardPage() {
                             </div>
                           );
                         })}
+                        </div>
                       </div>
                     </div>
                   </>
                 ) : (
                   <>
                     {/* MES PASSAT — Taula fusionada: classificació + premis */}
-                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0', overflow: 'auto' }}>
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E0' }}>
+                      <div className="table-scroll-inner">
                       <div style={{
                         display: 'grid', gridTemplateColumns: '50px 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr',
                         padding: '0.875rem 1.5rem', background: '#F8F8F4', borderBottom: '1px solid #E8E8E0', minWidth: '860px',
                       }}>
                         {['#', 'Jugador', 'Tokens', 'Patrimoni final', 'Guany%', 'Premi', 'Patrocinador', 'Enllaç'].map((col, i) => (
-                          <span key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i >= 3 && i <= 4 ? 'right' : 'left', display: 'block' }}>{col}</span>
+                          <span key={i} className={i === 0 ? 'sticky-c1 sticky-c1-head' : i === 1 ? 'sticky-c2 sticky-c2-head' : ''} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.72rem', fontWeight: '600', color: '#9B9B90', letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: i >= 3 && i <= 4 ? 'right' : 'left', display: 'block' }}>{col}</span>
                         ))}
                       </div>
                       {rankings.length === 0 ? (
@@ -1071,11 +1110,11 @@ export default function DashboardPage() {
                             alignItems: 'center', background: isMe ? 'rgba(201,168,76,0.12)' : 'transparent', minWidth: '860px',
                           }}>
                             {/* # */}
-                            <div style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
+                            <div className={`sticky-c1 ${isMe ? 'sticky-c1-me' : 'sticky-c1-row'}`} style={{ fontFamily: isMe ? "'Playfair Display', serif" : "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '400', color: entry.position <= 3 ? '#C9A84C' : '#6B6B60' }}>
                               {entry.position <= 3 ? ['🥇','🥈','🥉'][entry.position-1] : `#${entry.position}`}
                             </div>
                             {/* Jugador */}
-                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
+                            <div className={`sticky-c2 ${isMe ? 'sticky-c2-me' : 'sticky-c2-row'}`} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '0.9rem', fontWeight: isMe ? '700' : '500', color: '#0A0A0A' }}>
                               {entry.username}{isMe && <span style={{ color: '#C9A84C', marginLeft: '0.35rem', fontSize: '0.75rem' }}>← tu</span>}
                             </div>
                             {/* Tokens */}
@@ -1097,6 +1136,7 @@ export default function DashboardPage() {
                           </div>
                         );
                       })}
+                      </div>
                     </div>
 
                     {/* Assoliments */}
